@@ -12,13 +12,13 @@ const gameData = {
     locations: {
         'bosque': {
             name: 'Bosque Susurrante',
-            svg: '<svg viewBox="0 0 400 300"><rect width="400" height="300" fill="#87CEEB"/><path d="M0 300 H 400 V 200 C 300 250, 100 250, 0 200 Z" fill="#228B22"/><path d="M50 220 L75 120 L100 220 Z" fill="#006400"/><path d="M150 220 L175 100 L200 220 Z" fill="#006400"/><path d="M250 220 L275 150 L300 220 Z" fill="#006400"/><path d="M320 220 L345 130 L370 220 Z" fill="#006400"/></svg>',
+            svg: '<svg viewBox="0 0 400 400"><rect width="400" height="300" fill="#87CEEB"/><path d="M0 300 H 400 V 200 C 300 250, 100 250, 0 200 Z" fill="#228B22"/><path d="M50 220 L75 120 L100 220 Z" fill="#006400"/><path d="M150 220 L175 100 L200 220 Z" fill="#006400"/><path d="M250 220 L275 150 L300 220 Z" fill="#006400"/><path d="M320 220 L345 130 L370 220 Z" fill="#006400"/></svg>',
             description: 'El aire fresco llena tus pulmones mientras los rayos del sol se filtran entre los árboles.',
             // --- CONEXIONES ACTUALIZADAS ---
             choices: ['tienda', 'montana', 'rio', 'ruinas'],
             actions: [
-                { text: 'Talar Madera', class: 'btn-green', cost: { energia: 5 }, reward: { itemId: 'log', quantity: 1 } },
-                { text: 'Explorar', class: 'btn-blue', cost: { energia: 2 }, reward: {} }
+                { text: 'Talar Madera', class: 'btn', cost: { energia: 5 }, reward: { itemId: 'log', quantity: 1 } },
+                { text: 'Explorar', class: 'btn', cost: { energia: 2 }, reward: {} }
             ]
         },
         'montana': {
@@ -52,7 +52,7 @@ const gameData = {
             description: 'La entrada a la cueva es oscura y húmeda. El eco de gotas de agua resuena en la distancia y débiles destellos prometen riquezas.',
             choices: ['montana', 'ruinas'],
             actions: [
-                { text: 'Minar Gema', class: 'btn-green', cost: { energia: 12 }, reward: { itemId: 'gem', quantity: 1 } },
+                { text: 'Minar Gema', class: 'btn', cost: { energia: 12 }, reward: { itemId: 'gem', quantity: 1 } },
                 { text: 'Explorar profundo', class: 'btn-blue', cost: { energia: 20 }, reward: { itemId: 'diamond', quantity: 1 } }
             ]
         },
