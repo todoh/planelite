@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aventura en el Bosque</title>
+<link rel="stylesheet" href="styles.css"></head>
+
+
+
+<body>
+
+    <div class="game-container">
+        
+        <header class="stats-bar">
+            <span id="energyDisplay"></span>
+            <button class="menu-button" id="openMenuBtn">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                </svg>
+            </button>
+            <span id="goldDisplay"></span>
+        </header>
+
+        <div class="scene-container">
+            <div class="location-image-container"></div>
+            <div class="main-content">
+                <div>
+                    <p class="location-description"></p>
+                    <div class="choices-container"></div>
+                </div>
+            </div>
+            <footer class="actions-container"></footer>
+        </div>
+
+        <!-- Menú Overlay -->
+        <div class="menu-overlay" id="menuOverlay">
+            <div class="menu-content">
+                <div class="menu-header">
+                    <button class="close-menu-btn" id="closeMenuBtn">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                <div class="player-status">
+                    <div class="player-avatar"></div>
+                    <div class="player-info">
+                        <h3 id="playerName"></h3>
+                        <p id="playerEnergy"></p>
+                        <p id="playerGold"></p>
+                    </div>
+                </div>
+                <div class="inventory">
+                    <h4>Inventario</h4>
+                    <div class="inventory-grid"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="action-feedback-overlay" id="feedbackOverlay"></div>
+    </div>
+
+    <script  src="game-data.js"></script>
+    <script  src="mmo.js"></script>
+ 
+
+</body>
+</html>
