@@ -1,339 +1,70 @@
-/* Estilos para que el body y html ocupen toda la altura */
-html, body {
-    height: 100%;
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    background-color: #f7f7f7; /* Un gris muy sutil para que el blanco destaque */
-    color: #333;
-    -webkit-font-smoothing: antialiased; /* Mejora la legibilidad del texto */
-    text-rendering: optimizeLegibility;
-}
-
+/* --- ESTILOS GENERALES (STYLES.CSS) --- */
 body {
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    margin: 0;
+    padding: 0;
+    /* Evita que la página se mueva o rebote en móviles */
+    overflow: hidden; 
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+    background-color: #111;
+    color: white;
+    /* Deshabilita la selección de texto, útil en móviles */
+    user-select: none;
+    -webkit-user-select: none;
+    -ms-user-select: none;
 }
 
-/* Contenedor principal del juego */
-.game-container {
-    width: 100%;
-    
-    height: 100%;
-    /* Limita la altura en pantallas grandes */
-    background-color: #ffffff;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    position: relative;
-    border-radius: 20px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-align-items: center;}
-
-/* Barra superior de estadísticas */
-.stats-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px 24px;
-    font-weight: 600;
-    color: #555;
-    flex-shrink: 0;
-    font-size: 14px;
-}
-
-.menu-button {
-    cursor: pointer;
-    border: none;
-    background: none;
-    padding: 5px;
-}
-
-.menu-button svg {
-    width: 24px;
-    height: 24px;
-    stroke: #888;
-}
-
-/* Contenedor de la escena principal */
-.scene-container {
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-}
-
-.location-image-container {
+#info-bar {
     position: absolute;
-    top:11%;
-    left: 50%;
- height: 30%;
-    transform: translateX(-50%);
- 
-    /* La altura se ajustará automáticamente */
-    flex-shrink: 0;
-    padding: 0;  
+    top: 10px;
+    left: 10px;
+    background-color: rgba(0, 0, 0, 0.7);
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    z-index: 10;
 }
 
-.location-image-container svg {
-    width: auto;
-    height: 100%;
-    display: block;
-}
-
-.main-content {
-    padding: 24px;
-    flex-grow: 1;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-}
-
-.location-description { left: 50%;
-    transform: translateX(-50%);
-     position: absolute;
-     top: 48%;
-    font-size: 16px;
-    color: #444;
-    line-height: 1.6;
-    margin: 0;  
-    margin-bottom: 24px;
-    text-align: center;
-}
-
-.choices-container {    position: absolute;
-     top: 65%;
-    width: 80%;
-    display: flex; left: 50%;
-    transform: translateX(-50%);
-    justify-content: center;
-    gap: 30px;
-}
-
-.choice-image-container {
-    width: 100px; /* Tamaño fijo para los cuadrados */
-    height: 100px;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-    overflow: hidden;
-    border: 0px solid #eee;
-}
-
-.choice-image-container svg {
-    width: 100%;
-    height: 100%;
-    display: block;
-}
-
-.choice-image-container:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
-}
-
-/* Contenedor de los botones de acción */
-.actions-container {
-    display: flex;
-    gap: 24px;
-    padding: 24px;
-    background-color: #ffffff;
-    flex-shrink: 0;
-    margin-bottom: 20%;
-}
-
-/* Estilo base para los botones */
-.action-button {
-    flex: 1;
-    padding: 14px 20px;
-    border: 1px solid #e0e0e0;
-    border-radius: 12px;
-    font-size: 15px;
-    font-weight: 600;
-    background-color: #f9f9f9;
-    color: #444;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.action-button:hover {
-    background-color: #f1f1f1;
-    border-color: #dcdcdc;
-}
-
-.action-button:active {
-    transform: scale(0.97);
-}
-
-.btn {
- background-color: transparent;
-    border-color: #c8e6c9;
-    color: black;
-    border: none;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-
-}
-
-/* Botón de acción coloreado */
-.action-button.btn-green {
-    background-color: #e6f4ea;
-    border-color: #c8e6c9;
-    color: #2e7d32;
-}
-.action-button.btn-green:hover { background-color: #d7edd9; }
-
-.action-button.btn-blue {
-    background-color: #e3f2fd;
-    border-color: #bbdefb;
-    color: #1565c0;
-}
-.action-button.btn-blue:hover { background-color: #d4eafc; }
-
-
-/* --- Estilos del Menú --- */
-.menu-overlay {
+#game-canvas {
     position: absolute;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.4);
-    display: none;
-    justify-content: center;
-    align-items: center;
-    z-index: 100;
+    z-index: 1;
+    background-color: #333;
+    /* Asegura que el canvas no cause desbordamiento */
+    display: block;
 }
 
-.menu-overlay.visible {
-    display: flex;
-}
-
-.menu-content {
-    height: 65%;
-    overflow-x: hidden;
-    width: 90%;
-    max-width: 380px;
-    background-color: white;
-    padding: 20px;
-    box-sizing: border-box;
+/* --- ESTILOS PARA CONTROLES DE ZOOM --- */
+#zoom-controls {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    z-index: 10;
     display: flex;
     flex-direction: column;
-    border-radius: 16px;
-    animation: fadeIn 0.3s ease-out;
+    gap: 10px; /* Espacio entre botones */
 }
 
-@keyframes fadeIn {
-    from { opacity: 0; transform: scale(0.95); }
-    to { opacity: 1; transform: scale(1); }
-}
-
-.menu-header {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: 20px;
-}
-
-.close-menu-btn {
-     background: none;
-     border: none;
-     cursor: pointer;
-}
-
-.close-menu-btn svg {
-    width: 24px;
-    height: 24px;
-    stroke: #999;
-}
-
-.player-status {
+#zoom-controls button {
+    width: 50px;
+    height: 50px;
+    font-size: 28px;
+    font-weight: bold;
+    color: white;
+    background-color: rgba(0, 0, 0, 0.6);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%; /* Botones redondos */
+    cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 15px;
-    margin-bottom: 30px;
-    border-bottom: 1px solid #eee;
-    padding-bottom: 20px;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+    /* Evita el destello azul al tocar en móviles */
+    -webkit-tap-highlight-color: transparent; 
 }
 
-.player-avatar {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    background-color: #f1f3f4;
-    overflow: hidden;
-}
-
-.player-avatar svg {
-    width: 100%;
-    height: 100%;
-}
-
-.player-info h3 { margin: 0 0 5px 0; font-size: 18px; color: #333; }
-.player-info p { margin: 0; font-size: 14px; color: #777; }
-
-.inventory {    overflow-x: hidden;
-
-    overflow-y: auto;
-    flex-grow: 1;
-}
-
-.inventory h4 {
-    margin: 0 0 15px 0;
-    font-size: 14px;
-    text-transform: uppercase;
-    color: #999;
-    letter-spacing: 1px;
-    font-weight: 600;
-}
-
-.inventory-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(65px, 1fr));
-    gap: 12px;
-}
-
-.inventory-slot {
-    width: 100%;
-    padding-bottom: 100%; /* Mantiene la proporción cuadrada */
-    background-color: #f8f9fa;
-    border: 0px solid #eee;
-    border-radius: 12px;
-    position: relative;
-    overflow: hidden;
-}
-
-.inventory-slot svg {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 65%;
-    height: 65%;
-}
-
-.item-quantity {
-    position: absolute;
-    bottom: 2px;
-    right: 5px;
-    color: #888;
-    font-size: 12px;
-    font-weight: 600;
-}
-
-/* Efecto de feedback simplificado */
-.action-feedback-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: white;
-    pointer-events: none;
-    z-index: 200;
-    opacity: 0;
-}
-
-.action-feedback-overlay.fading { animation: quickFade 0.4s ease-out forwards; }
-@keyframes quickFade {
-    0% { opacity: 0; }
-    50% { opacity: 0.7; }
-    100% { opacity: 0; }
+#zoom-controls button:active {
+    background-color: rgba(255, 255, 255, 0.3);
 }
