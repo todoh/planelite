@@ -1,37 +1,53 @@
 // ==================================================
 // ### LÓGICA DE ACCIÓN DE MOVIMIENTO (MOVE-ACTION.JS) ###
 // ==================================================
+// ¡MODIFICADO! Añade _npcHandler y cambia el orden de la lógica
 
 import { ref, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 import { inverseProject } from './camera.js';
-// ¡NUEVA IMPORTACIÓN! (Aunque no se usa directamente, es bueno saber que existe)
-import * as Elements from './elements.js';
 
-// Variables locales del módulo
+// Variables locales del módulo (¡MODIFICADO!)
 let _myPlayerId;
 let _db;
-// ¡NUEVO! Función de callback para chequear colisiones
-let _collisionChecker = (x, z) => false; // Por defecto, no permite moverse
+let _collisionChecker = (x, z) => false; 
+let _portalHandler = (x, z) => null;
+let _npcHandler = (x, z) => false; // <-- AÑADIDO
+let _getCurrentMapId = () => null;
 
 /**
- * Establece las dependencias (myPlayerId, db).
+ * Establece las dependencias (sin cambios)
  */
-export function setMoveActionDependencies(myPlayerId, db) {
+export function setMoveActionDependencies(myPlayerId, db, getCurrentMapIdFunc) {
     _myPlayerId = myPlayerId;
     _db = db;
+    _getCurrentMapId = getCurrentMapIdFunc;
 }
 
 /**
- * ¡NUEVO! Establece la función que se usará para chequear colisiones.
- * Esta función es pasada desde main.js
- * @param {function} checkerFunc - Una función que recibe (worldX, worldZ) y devuelve boolean.
+ * Establece la función que se usará para chequear colisiones. (sin cambios)
  */
 export function setCollisionChecker(checkerFunc) {
     _collisionChecker = checkerFunc;
 }
 
 /**
+ * Establece la función que se usará para chequear portales. (sin cambios)
+ */
+export function setPortalHandler(handlerFunc) {
+    _portalHandler = handlerFunc;
+}
+
+/**
+ * ¡NUEVO! Establece la función que se usará para chequear NPCs.
+ */
+export function setNpcHandler(handlerFunc) {
+    _npcHandler = handlerFunc;
+}
+
+
+/**
  * Configura el listener de clic/toque para mover
+ * (¡MODIFICADO! Cambia el orden de la lógica)
  */
 export function setupClickMove2_5D(canvas) {
     
@@ -50,22 +66,52 @@ export function setupClickMove2_5D(canvas) {
             screenY = event.clientY;
         }
 
-        // Convertir clic de pantalla a coordenadas del mundo
         const worldCoords = inverseProject(screenX, screenY);
+        const myPlayerRef = ref(_db, `moba-demo-players-3d/${_myPlayerId}`);
 
-        // --- ¡NUEVO! CHEQUEO DE COLISIÓN ---
-        // Usamos la función que nos pasó main.js
+        // ===================================
+        // ### LÓGICA DE CLICK MODIFICADA ###
+        // ===================================
+
+        // --- 1. CHEQUEO DE INTERACCIÓN NPC ---
+        // El _npcHandler ahora comprueba la distancia y muestra el modal él mismo
+        const interactionHappened = _npcHandler(worldCoords.x, worldCoords.z);
+        if (interactionHappened) {
+            return; // Si interactuamos, no hacemos nada más (ni mover, ni portal)
+        }
+
+        // --- 2. LÓGICA DE PORTAL ---
+        const portalDest = _portalHandler(worldCoords.x, worldCoords.z);
+        if (portalDest) {
+            // Se encontró un portal
+            const localMapId = _getCurrentMapId();
+            
+            if (portalDest.mapId && portalDest.mapId !== localMapId) {
+                // --- ¡PORTAL INTER-MAPA! ---
+                update(myPlayerRef, {
+                    x: portalDest.x,
+                    z: portalDest.z,
+                    currentMap: portalDest.mapId
+                });
+            } else {
+                // --- Portal local (mismo mapa) ---
+                update(myPlayerRef, {
+                    x: portalDest.x,
+                    z: portalDest.z
+                });
+            }
+            return; // Usamos el portal, no hacemos nada más
+        }
+        
+        // --- 3. CHEQUEO DE COLISIÓN ---
         if (!_collisionChecker(worldCoords.x, worldCoords.z)) {
             console.warn("Movimiento bloqueado: Casilla no transitable en", worldCoords);
-            // Opcional: mostrar un efecto visual de "bloqueo"
             showBlockedClick(screenX, screenY);
-            return; // ¡No actualiza Firebase!
+            return; // Colisión, no mover
         }
-        // --- FIN DE CHEQUEO ---
 
-
-        // Actualizar la posición de nuestro jugador en Firebase
-        const myPlayerRef = ref(_db, `moba-demo-players-3d/${_myPlayerId}`);
+        // --- 4. MOVIMIENTO NORMAL ---
+        // Si no interactuamos, no usamos portal y no colisionamos, nos movemos.
         update(myPlayerRef, {
             x: worldCoords.x,
             z: worldCoords.z
@@ -77,17 +123,17 @@ export function setupClickMove2_5D(canvas) {
 }
 
 /**
- * Muestra un pequeño indicador visual de "X" donde el usuario hizo clic
- * en una zona bloqueada.
+ * Muestra un pequeño indicador visual de "X"... (sin cambios)
  */
 function showBlockedClick(screenX, screenY) {
+    // ... (código sin cambios) ...
     let indicator = document.createElement('div');
     indicator.textContent = '❌';
     indicator.style.position = 'absolute';
     indicator.style.left = `${screenX - 12}px`;
     indicator.style.top = `${screenY - 12}px`;
     indicator.style.fontSize = '24px';
-    indicator.style.pointerEvents = 'none'; // No debe interferir con clics
+    indicator.style.pointerEvents = 'none'; 
     indicator.style.zIndex = '100';
     indicator.style.transition = 'opacity 0.5s, transform 0.5s';
     indicator.style.opacity = '1';
@@ -98,9 +144,9 @@ function showBlockedClick(screenX, screenY) {
     setTimeout(() => {
         indicator.style.opacity = '0';
         indicator.style.transform = 'scale(1.5)';
-    }, 100); // Inicia el desvanecimiento rápido
+    }, 100); 
 
     setTimeout(() => {
         document.body.removeChild(indicator);
-    }, 600); // Elimina del DOM
+    }, 600); 
 }
