@@ -1,152 +1,112 @@
 // ==================================================
 // ### LÓGICA DE ACCIÓN DE MOVIMIENTO (MOVE-ACTION.JS) ###
 // ==================================================
-// ¡MODIFICADO! Añade _npcHandler y cambia el orden de la lógica
+// ¡Este archivo ahora es una utilidad pura de pathfinding!
 
 import { ref, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-import { inverseProject } from './camera.js';
 
-// Variables locales del módulo (¡MODIFICADO!)
-let _myPlayerId;
-let _db;
-let _collisionChecker = (x, z) => false; 
-let _portalHandler = (x, z) => null;
-let _npcHandler = (x, z) => false; // <-- AÑADIDO
-let _getCurrentMapId = () => null;
+// --- Variables locales del módulo ---
+// (Estas ya no son necesarias para findLastValidPosition)
+// let _myPlayerId;
+// let _db;
+// let _getCurrentMapId = () => null;
+
+// --- Funciones de dependencia (para findLastValidPosition) ---
+let _collisionChecker = (x, z, fromX, fromZ) => false; 
+let _portalHandler = (x, z) => null; // (Se mantiene por si se usa en el futuro)
+let _npcHandler = (x, z) => false;   // (Se mantiene por si se usa en el futuro)
+
 
 /**
- * Establece las dependencias (sin cambios)
+ * Establece las dependencias (¡Simplificado!)
  */
 export function setMoveActionDependencies(myPlayerId, db, getCurrentMapIdFunc) {
-    _myPlayerId = myPlayerId;
-    _db = db;
-    _getCurrentMapId = getCurrentMapIdFunc;
+    // _myPlayerId = myPlayerId;
+    // _db = db;
+    // _getCurrentMapId = getCurrentMapIdFunc;
 }
 
 /**
- * Establece la función que se usará para chequear colisiones. (sin cambios)
+ * Establece la función que se usará para chequear colisiones.
  */
 export function setCollisionChecker(checkerFunc) {
     _collisionChecker = checkerFunc;
 }
 
 /**
- * Establece la función que se usará para chequear portales. (sin cambios)
+ * Establece la función que se usará para chequear portales.
  */
 export function setPortalHandler(handlerFunc) {
     _portalHandler = handlerFunc;
 }
 
 /**
- * ¡NUEVO! Establece la función que se usará para chequear NPCs.
+ * Establece la función que se usará para chequear NPCs.
  */
 export function setNpcHandler(handlerFunc) {
     _npcHandler = handlerFunc;
 }
 
+// --- ¡ELIMINADO! ---
+// setupClickMove2_5D(canvas)
+// showBlockedClick(screenX, screenY)
+// setPlayerPositionGetter(getterFunc)
+// La lógica de clic ahora vive en main.js
 
 /**
- * Configura el listener de clic/toque para mover
- * (¡MODIFICADO! Cambia el orden de la lógica)
+ * ¡CONSERVADO Y MEJORADO!
+ * "Camina" en línea recta desde startPos a endPos y devuelve
+ * el último punto transitable encontrado, usando un radio para el jugador.
+ * @param {object} startPos - {x, z}
+ * @param {object} endPos - {x, z} (puede ser un THREE.Vector3)
+ * @param {function} collisionChecker - La función logica.isPositionPassable
  */
-export function setupClickMove2_5D(canvas) {
+export function findLastValidPosition(startPos, endPos, collisionChecker) {
+    const dx = endPos.x - startPos.x;
+    const dz = endPos.z - startPos.z;
+    const distance = Math.hypot(dx, dz);
     
-    const handleMove = (event) => {
-        if (!_myPlayerId || !_db || !canvas || !_collisionChecker) return;
-        if (event.target !== canvas) return;
-        
-        event.preventDefault(); 
+    const stepSize = 0.1; // Paso pequeño para mayor precisión
+    const numSteps = Math.ceil(distance / stepSize);
+    const PLAYER_RADIUS = 0.4; // Radio del jugador (un poco menos de media casilla)
 
-        let screenX, screenY;
-        if (event.touches && event.touches.length > 0) {
-            screenX = event.touches[0].clientX;
-            screenY = event.touches[0].clientY;
+    if (numSteps === 0) {
+        return startPos;
+    }
+
+    let lastValidPos = startPos;
+    let prevX = startPos.x;
+    let prevZ = startPos.z;
+
+    for (let i = 1; i <= numSteps; i++) {
+        const t = i / numSteps;
+        const checkX = startPos.x + dx * t;
+        const checkZ = startPos.z + dz * t;
+
+        // Calcula un punto de sondeo "adelantado" en la dirección del movimiento
+        const checkX_Forward = checkX + (distance > 0 ? (dx / distance) * PLAYER_RADIUS : 0);
+        const checkZ_Forward = checkZ + (distance > 0 ? (dz / distance) * PLAYER_RADIUS : 0);
+
+        // Comprueba el punto "adelantado"
+        if (collisionChecker(checkX_Forward, checkZ_Forward, prevX, prevZ, false)) {
+            // Este punto es válido, actualizar
+            lastValidPos = { x: checkX, z: checkZ }; // Guardamos la posición del CENTRO
+            prevX = checkX;
+            prevZ = checkZ;
         } else {
-            screenX = event.clientX;
-            screenY = event.clientY;
+            // Chocamos con un muro o un escalón.
+            // Devolver el *último* punto que SÍ fue válido.
+            return lastValidPos;
         }
+    }
 
-        const worldCoords = inverseProject(screenX, screenY);
-        const myPlayerRef = ref(_db, `moba-demo-players-3d/${_myPlayerId}`);
-
-        // ===================================
-        // ### LÓGICA DE CLICK MODIFICADA ###
-        // ===================================
-
-        // --- 1. CHEQUEO DE INTERACCIÓN NPC ---
-        // El _npcHandler ahora comprueba la distancia y muestra el modal él mismo
-        const interactionHappened = _npcHandler(worldCoords.x, worldCoords.z);
-        if (interactionHappened) {
-            return; // Si interactuamos, no hacemos nada más (ni mover, ni portal)
-        }
-
-        // --- 2. LÓGICA DE PORTAL ---
-        const portalDest = _portalHandler(worldCoords.x, worldCoords.z);
-        if (portalDest) {
-            // Se encontró un portal
-            const localMapId = _getCurrentMapId();
-            
-            if (portalDest.mapId && portalDest.mapId !== localMapId) {
-                // --- ¡PORTAL INTER-MAPA! ---
-                update(myPlayerRef, {
-                    x: portalDest.x,
-                    z: portalDest.z,
-                    currentMap: portalDest.mapId
-                });
-            } else {
-                // --- Portal local (mismo mapa) ---
-                update(myPlayerRef, {
-                    x: portalDest.x,
-                    z: portalDest.z
-                });
-            }
-            return; // Usamos el portal, no hacemos nada más
-        }
-        
-        // --- 3. CHEQUEO DE COLISIÓN ---
-        if (!_collisionChecker(worldCoords.x, worldCoords.z)) {
-            console.warn("Movimiento bloqueado: Casilla no transitable en", worldCoords);
-            showBlockedClick(screenX, screenY);
-            return; // Colisión, no mover
-        }
-
-        // --- 4. MOVIMIENTO NORMAL ---
-        // Si no interactuamos, no usamos portal y no colisionamos, nos movemos.
-        update(myPlayerRef, {
-            x: worldCoords.x,
-            z: worldCoords.z
-        });
-    };
-
-    canvas.addEventListener('touchstart', handleMove, { passive: false });
-    canvas.addEventListener('click', handleMove);
-}
-
-/**
- * Muestra un pequeño indicador visual de "X"... (sin cambios)
- */
-function showBlockedClick(screenX, screenY) {
-    // ... (código sin cambios) ...
-    let indicator = document.createElement('div');
-    indicator.textContent = '❌';
-    indicator.style.position = 'absolute';
-    indicator.style.left = `${screenX - 12}px`;
-    indicator.style.top = `${screenY - 12}px`;
-    indicator.style.fontSize = '24px';
-    indicator.style.pointerEvents = 'none'; 
-    indicator.style.zIndex = '100';
-    indicator.style.transition = 'opacity 0.5s, transform 0.5s';
-    indicator.style.opacity = '1';
-    indicator.style.transform = 'scale(1)';
+    // Si todo el camino fue válido, chequear el destino final exacto
+    const endX_Forward = endPos.x + (distance > 0 ? (dx / distance) * PLAYER_RADIUS : 0);
+    const endZ_Forward = endPos.z + (distance > 0 ? (dz / distance) * PLAYER_RADIUS : 0);
     
-    document.body.appendChild(indicator);
-
-    setTimeout(() => {
-        indicator.style.opacity = '0';
-        indicator.style.transform = 'scale(1.5)';
-    }, 100); 
-
-    setTimeout(() => {
-        document.body.removeChild(indicator);
-    }, 600); 
+    if (collisionChecker(endX_Forward, endZ_Forward, prevX, prevZ, false)) {
+        return endPos; // El destino final es válido
+    } else {
+        return lastValidPos; // El destino final no es válido, usar el paso anterior
+    }
 }

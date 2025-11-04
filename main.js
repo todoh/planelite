@@ -1,31 +1,38 @@
 // ==================================================
-// ### SCRIPT PRINCIPAL (MAIN.JS) ###
+// ### SCRIPT PRINCIPAL (main.js) - VERSIÓN 3D ###
 // ==================================================
+// Este archivo es el nuevo "director de orquesta" de Three.js.
 
 // 1. Importaciones de Firebase
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getDatabase, ref, set, onValue, onDisconnect, query, orderByChild, equalTo, off } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getDatabase, ref, set, onValue, onDisconnect, query, orderByChild, equalTo, off, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-// 2. Importaciones de la lógica del juego
-import { project, updateCameraPosition, updateZoom, ZOOM_STEP, currentZoom, inverseProject } from './camera.js'; // <-- Importar inverseProject
-import { setupClickMove2_5D, setMoveActionDependencies, setCollisionChecker, setPortalHandler, setNpcHandler } from './move-action.js';
-import { loadGameDefinitions, drawGroundTile } from './elements.js';
+// 2. ¡NUEVO! Importaciones de Three.js
+import * as THREE from 'three';
+// ¡ELIMINADO! OrbitControls ya no se usa para la cámara principal.
+// import { OrbitControls } from 'three/addons/controls/OrbitControls.js'; 
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
+// 3. Importaciones de la lógica del juego
+import {
+    setMoveActionDependencies,
+    setCollisionChecker,
+    setPortalHandler,
+    setNpcHandler,
+    findLastValidPosition 
+} from './move-action.js';
+import { loadGameDefinitions } from './elements.js';
+import { 
+    firebaseConfig, playerSize, PLAYER_LERP_AMOUNT,
+    // ¡MODIFICADO! Importar nuevas constantes de cámara
+    CAMERA_ROTATE_SPEED, CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM, CAMERA_ZOOM_STEP,
+    CAMERA_DEFAULT_HEIGHT, CAMERA_DEFAULT_DISTANCE, CAMERA_DEFAULT_ZOOM,
+    CAMERA_ROTATE_STEP // ¡AÑADIDO!
+} from './constantes.js';
+import * as logica from './logica.js';
 
-// 3. Configuración de Firebase
-const firebaseConfig = {
-  apiKey: "AIzaSyAfK_AOq-Pc2bzgXEzIEZ1ESWvnhMJUvwI",
-  authDomain: "enraya-51670.firebaseapp.com",
-  databaseURL: "https://enraya-51670-default-rtdb.europe-west1.firebasedatabase.app", 
-  projectId: "enraya-51670",
-  storageBucket: "enraya-51670.firebasestorage.app",
-  messagingSenderId: "103343380727",
-  appId: "1:103343380727:web:b2fa02aee03c9506915bf2",
-  measurementId: "G-2G31LLJY1T"
-};
-
-// 4. Variables globales del juego y Firebase
+// 4. Variables globales de Firebase y Estado
 let app;
 let auth;
 let db;
@@ -33,678 +40,170 @@ let myPlayerId;
 let myPlayerRef = null;
 let isGameLoopRunning = false;
 let GAME_DEFINITIONS = { groundTypes: {}, elementTypes: {} };
+
 let playersListener = null;
-let playersState = {}; 
-let interpolatedPlayersState = {}; 
-const MOVEMENT_SPEED = 0.05; // Velocidad del jugador
+let playersState = {};
+let interpolatedPlayersState = {};
+
 let mapListener = null;
 let mapRef = null;
-let currentMapData = null; 
+let currentMapData = null;
 let currentMapId = "map_001";
-let canvas, ctx;
+
+// Estado de NPCs
+let npcStates = {};
+
+// 5. Variables de UI y Canvas
+let canvas;
 let infoBar;
-
-// Variables del Modal de NPC
 let npcModalContainer, npcModalText, npcModalClose;
-const MELEE_RANGE = 2.0; // Distancia (en casillas) para interactuar
 
-// Estado de NPCs y constantes de movimiento
-let npcStates = {}; // Almacena el estado dinámico de los NPCs en el mapa
-const NPC_MOVE_SPEED = 0.02; // Más lento que el jugador
-const NPC_RANDOM_MOVE_CHANCE = 0.005; // Probabilidad por frame de moverse
-const NPC_RANDOM_WAIT_TIME = 2000; // ms de espera entre movimientos aleatorios
+// 6. ¡NUEVO! Variables de Three.js
+let scene, camera, renderer, raycaster, mouse;
+const loader = new THREE.TextureLoader();
+const gltfLoader = new GLTFLoader();
+const textureCache = new Map();
 
-// --- ¡NUEVO! Variables de Hover ---
-let mouseScreenPos = { x: 0, y: 0 };
-let hoveredItemKey = null; // 'npc_z_x' o 'portal_z_x'
-const INTERACTION_RADIUS = 0.75; // Radio en casillas del mundo para detectar hover
-// --- Fin de añadidos ---
+// Mapas para rastrear objetos 3D
+let playerMeshes = {};
+let npcMeshes = {};
+let worldMeshes = {}; 
+let spriteMeshes = {}; 
+let interactableObjects = []; 
 
-const playerSize = 1.0; 
-const playerImg = new Image();
-let playerImgLoaded = true;
-const playerImgWidth = 250; 
-const playerImgHeight = 250; 
-const playerTextureURL = 'samurai.png'; 
+// 7. ¡NUEVO! Variables de Control de Cámara Isométrica
+let cameraTarget = new THREE.Vector3(); // Punto al que mira la cámara (centro del jugador)
+let cameraAngle = -Math.PI / 4; // Ángulo azimutal inicial (isométrico)
+let targetCameraAngle = cameraAngle;
+// ¡MODIFICADO! Estas variables ahora controlan el ángulo y la posición
+let cameraHeight = CAMERA_DEFAULT_HEIGHT; 
+let cameraDistance = CAMERA_DEFAULT_DISTANCE;
+let cameraZoom = CAMERA_DEFAULT_ZOOM; // ¡NUEVO! Controla el zoom ortográfico
 
-// 5. Función principal (onload)
+// 7. Función principal (onload)
 window.onload = () => {
+    // Inicializar UI
     infoBar = document.getElementById('info-bar');
-    initCanvas();
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-
-    // Obtener referencias del Modal
     npcModalContainer = document.getElementById('npc-modal-container');
     npcModalText = document.getElementById('npc-modal-text');
     npcModalClose = document.getElementById('npc-modal-close');
-    npcModalClose.addEventListener('click', hideNpcModal);
+    npcModalClose.addEventListener('click', hideNpcModal); 
 
-    playerImg.onload = () => { playerImgLoaded = true; };
-    playerImg.onerror = () => {
-        console.error("No se pudo cargar la textura del jugador. Se usará un bloque de color.");
-        playerImgLoaded = false; 
-    }
-    playerImg.crossOrigin = "anonymous";
-    playerImg.src = playerTextureURL;
+    // Inicializar Canvas
+    canvas = document.getElementById('game-canvas');
+    
+    // --- ¡NUEVO! Inicializar Three.js ---
+    initThree();
+    
+    // --- ¡NUEVO! Listeners de UI de Cámara ---
+    document.getElementById('rotate-left').addEventListener('click', rotateCameraLeft);
+    document.getElementById('rotate-right').addEventListener('click', rotateCameraRight);
+    document.getElementById('zoom-in').addEventListener('click', zoomIn);
+    document.getElementById('zoom-out').addEventListener('click', zoomOut);
+    canvas.addEventListener('wheel', onMouseWheel, { passive: false });
+    // ------------------------------------
 
+    resizeCanvas(); // Ajustar tamaño inicial
+    window.addEventListener('resize', resizeCanvas);
+
+    // Inicializar Firebase
     initializeFirebase();
-
-    // Listeners de Zoom
-    const zoomInButton = document.getElementById('zoom-in');
-    const zoomOutButton = document.getElementById('zoom-out');
-    const handleZoomIn = (e) => { e.preventDefault(); updateZoom(ZOOM_STEP); };
-    const handleZoomOut = (e) => { e.preventDefault(); updateZoom(1 / ZOOM_STEP); };
-    zoomInButton.addEventListener('touchstart', handleZoomIn, { passive: false });
-    zoomInButton.addEventListener('click', handleZoomIn);
-    zoomOutButton.addEventListener('touchstart', handleZoomOut, { passive: false });
-    zoomOutButton.addEventListener('click', handleZoomOut);
 };
 
-// 6. Funciones de Canvas (¡MODIFICADO!)
-function resizeCanvas() {
-    if (canvas) {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    }
-}
-function initCanvas() {
-    canvas = document.getElementById('game-canvas');
-    ctx = canvas.getContext('2d');
-    setupClickMove2_5D(canvas); // Configura el 'click'
+// 8. Funciones de Three.js
 
-    // --- ¡NUEVO! Listener para 'mousemove' ---
-    canvas.addEventListener('mousemove', (event) => {
-        mouseScreenPos.x = event.clientX;
-        mouseScreenPos.y = event.clientY;
-    });
-    // --- Fin de añadido ---
+function initThree() {
+    // Escena
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x333333);
+    scene.fog = new THREE.Fog(0x333333, 30, 70); // Ajustado
 
-    canvas.addEventListener('wheel', (event) => {
-        event.preventDefault(); 
-        if (event.deltaY < 0) {
-            updateZoom(ZOOM_STEP);
-        } else if (event.deltaY > 0) {
-            updateZoom(1 / ZOOM_STEP);
-        }
-    }, { passive: false });
-}
-
-// 8. Inicializar Firebase y autenticación
-async function initializeFirebase() {
-    try {
-        app = initializeApp(firebaseConfig);
-        auth = getAuth(app);
-        db = getDatabase(app);
-        
-        infoBar.textContent = "Autenticando...";
-
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                myPlayerId = user.uid;
-                myPlayerRef = ref(db, `moba-demo-players-3d/${myPlayerId}`);
-                
-                infoBar.textContent = "Cargando definiciones del juego...";
-                
-                // --- ¡PASO 1: Cargar definiciones! ---
-                try {
-                    GAME_DEFINITIONS = await loadGameDefinitions(db);
-                } catch (defError) {
-                    console.error("Error fatal al cargar definiciones:", defError);
-                    infoBar.textContent = "Error: No se pudieron cargar las definiciones.";
-                    return;
-                }
-
-                // --- ¡PASO 2: Configurar el juego (MODIFICADO) ---
-                setMoveActionDependencies(myPlayerId, db, () => currentMapId);
-                setCollisionChecker(isPositionPassable);
-                setPortalHandler(getPortalDestination);
-                setNpcHandler(getNpcInteraction);
-
-                infoBar.innerHTML = `Conectado. <br> <strong>Tu UserID:</strong> ${myPlayerId.substring(0, 6)}<br><strong>Instrucciones:</strong> Toca para moverte.`;
-                
-                onDisconnect(myPlayerRef).remove();
-                
-                onValue(myPlayerRef, (snapshot) => {
-                    const playerData = snapshot.val();
-                    if (playerData && playerData.currentMap !== currentMapId) {
-                        console.log(`¡Cambio de mapa detectado! Moviendo a ${playerData.currentMap}`);
-                        if (interpolatedPlayersState[myPlayerId]) {
-                            interpolatedPlayersState[myPlayerId].x = playerData.x;
-                            interpolatedPlayersState[myPlayerId].z = playerData.z;
-                        }
-                        loadMap(playerData.currentMap);
-                    }
-                });
-                
-                // --- ¡PASO 3: Cargar el mapa inicial ---
-                loadMap(currentMapId); 
-
-            } else {
-                signInAnonymously(auth).catch((error) => {
-                    console.error("Error al iniciar sesión anónimamente:", error);
-                    infoBar.textContent = "Error al conectar con Firebase Auth.";
-                });
-            }
-        });
-
-    } catch (error) {
-        console.error("Error al inicializar Firebase:", error);
-        infoBar.textContent = "Error al inicializar Firebase. Revisa la consola.";
-    }
-}
-
-
-/**
- * Carga un mapa y configura los listeners.
- * @param {string} mapId 
- */
-function loadMap(mapId) {
-    console.log(`Cargando mapa: ${mapId}`);
-    
-    // 1. Limpiar listeners antiguos
-    if (mapListener) {
-        off(mapRef, 'value', mapListener);
-    }
-    if (playersListener) {
-        const oldPlayersQuery = query(ref(db, 'moba-demo-players-3d'), orderByChild('currentMap'), equalTo(currentMapId));
-        off(oldPlayersQuery, 'value', playersListener);
-    }
-    
-    // 2. Limpiar estado local
-    playersState = {};
-    npcStates = {}; // Limpiar NPCs
-    currentMapId = mapId;
-    
-    // 3. Configurar nuevas referencias
-    mapRef = ref(db, `moba-demo-maps/${mapId}`);
-    const playersQuery = query(ref(db, 'moba-demo-players-3d'), orderByChild('currentMap'), equalTo(mapId));
-
-    // 4. Iniciar nuevos listeners
-    mapListener = onValue(mapRef, (snapshot) => {
-        const data = snapshot.val();
-        if (data && data.tiles) {
-            // Procesamiento de tileGrid
-            data.tileGrid = [];
-            for (let z = 0; z < data.height; z++) {
-                const row = [];
-                for (let x = 0; x < data.width; x++) {
-                    const tile = data.tiles[z * data.width + x] || { g: 'void', e: 'none' };
-                    row.push(tile);
-                }
-                data.tileGrid.push(row);
-            }
-            currentMapData = data;
-            
-            // Poblar el estado de NPCs
-            npcStates = {}; // Limpiar por si acaso
-            for (let z = 0; z < currentMapData.height; z++) {
-                for (let x = 0; x < currentMapData.width; x++) {
-                    const tile = currentMapData.tileGrid[z][x];
-                    if (tile && typeof tile.e === 'object' && tile.e.id) {
-                        const elementDef = GAME_DEFINITIONS.elementTypes[tile.e.id];
-                        // Es un NPC si es un sprite y tiene config de movimiento
-                        if (elementDef && elementDef.drawType === 'sprite' && tile.e.movement) {
-                            const npcKey = `npc_${z}_${x}`; // Clave única basada en su tile de origen
-                            npcStates[npcKey] = {
-                                ...tile.e, // Copia 'id', 'movement', 'route', 'interaction', etc.
-                                x: x + 0.5, // Posición actual X
-                                z: z + 0.5, // Posición actual Z
-                                targetX: x + 0.5, // Posición objetivo X
-                                targetZ: z + 0.5, // Posición objetivo Z
-                                isMoving: false,
-                                currentTargetIndex: 0,
-                                lastMoveTime: Date.now(),
-                                originKey: npcKey // Guardamos su propia clave
-                            };
-                        }
-                    }
-                }
-            }
-            console.log("Estado de NPCs inicializado:", npcStates);
-
-            // Lógica de Spawn
-            let spawnPos;
-            if (data.startPosition && data.startPosition.x !== null && data.startPosition.z !== null) {
-                spawnPos = { x: data.startPosition.x + 0.5, z: data.startPosition.z + 0.5 };
-            } else {
-                spawnPos = { x: data.width / 2, z: data.height / 2 };
-            }
-            currentMapData.initialSpawn = spawnPos;
-            
-            // Lógica de spawn del jugador
-            onValue(myPlayerRef, (playerSnap) => {
-                const playerData = playerSnap.val();
-                if (!playerData) {
-                    console.log("Jugador no existe, creando en spawn point.");
-                    set(myPlayerRef, {
-                        id: myPlayerId,
-                        x: spawnPos.x,
-                        z: spawnPos.z,
-                        currentMap: mapId
-                    });
-                } else if (playerData.currentMap !== mapId) {
-                    if (interpolatedPlayersState[myPlayerId]) {
-                         interpolatedPlayersState[myPlayerId].x = playerData.x;
-                         interpolatedPlayersState[myPlayerId].z = playerData.z;
-                    }
-                    console.log(`Teleportación a ${mapId} confirmada.`);
-                }
-            }, { onlyOnce: true });
-
-        } else {
-            console.warn(`No se encontraron datos para el mapa ${mapId}.`);
-            currentMapData = null; 
-        }
-    });
-    
-    // playersListener
-    playersListener = onValue(playersQuery, (snapshot) => {
-        playersState = snapshot.val() || {};
-        for (const id in interpolatedPlayersState) {
-            if (!playersState[id]) {
-                delete interpolatedPlayersState[id];
-            }
-        }
-        for (const id in playersState) {
-            if (!interpolatedPlayersState[id]) {
-                interpolatedPlayersState[id] = { ...playersState[id] };
-            }
-        }
-    });
-
-    // 5. Iniciar bucle del juego
-    if (!isGameLoopRunning) {
-        isGameLoopRunning = true;
-        gameLoop(); 
-    }
-}
-
-
-// 12. Bucle principal del juego (¡MODIFICADO!)
-function gameLoop() {
-    if (!isGameLoopRunning) return; 
-    
-    requestAnimationFrame(gameLoop); 
-    if (!ctx) return; 
-
-    // Dependencias del bucle
-    updateCameraPosition(myPlayerId, interpolatedPlayersState, canvas, playerSize);
-    updatePlayerPositions(); 
-    updateNpcPositions();
-    updateHoveredState(); // <-- ¡AÑADIDO! Comprobar hover
-    
-    ctx.fillStyle = '#333333';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // 1. Dibujar el suelo
-    drawGround(GAME_DEFINITIONS.groundTypes);
-
-    // 2. Crear lista de "cosas" a dibujar
-    let renderables = [];
-    if (currentMapData && currentMapData.tileGrid) {
-        for (let z = 0; z < currentMapData.height; z++) {
-            for (let x = 0; x < currentMapData.width; x++) {
-                const tile = currentMapData.tileGrid[z][x];
-                if (!tile || tile.e === 'none' || !tile.e) continue;
-                
-                const elementId = (typeof tile.e === 'object' && tile.e !== null) ? tile.e.id : tile.e;
-                const elementDef = GAME_DEFINITIONS.elementTypes[elementId];
-                
-                if (elementDef) {
-                    // No dibujar NPCs estáticos, se dibujan desde npcStates
-                    if (elementDef.drawType === 'sprite' && (tile.e.movement || (typeof tile.e === 'object' && tile.e.movement))) {
-                        continue; // Saltar NPCs, se añadirán desde npcStates
-                    }
-                    
-                    // --- ¡AÑADIDO! Comprobar si es un portal y está "hovered" ---
-                    let isHovered = false;
-                    const itemKey = `portal_${z}_${x}`; // Clave única para portales
-                    if (elementDef.drawType === 'portal' && itemKey === hoveredItemKey) {
-                        isHovered = true;
-                    }
-                    // --- Fin de añadido ---
-
-                    renderables.push({
-                        type: 'element',
-                        x: x + 0.5,
-                        z: z + 0.5,
-                        y: 0,
-                        definition: elementDef,
-                        isHovered: isHovered // <-- ¡AÑADIDO!
-                    });
-                }
-            }
-        }
-    }
-
-    // Añadir jugadores
-    for (const player of Object.values(interpolatedPlayersState)) {
-        if(player.currentMap === currentMapId) {
-            renderables.push({
-                type: 'player',
-                y: playerSize,
-                ...player
-            });
-        }
-    }
-
-    // Añadir NPCs dinámicos desde npcStates
-    for (const [key, npc] of Object.entries(npcStates)) {
-        const npcDef = GAME_DEFINITIONS.elementTypes[npc.id];
-        if (npcDef) {
-            const isHovered = (key === hoveredItemKey); // <-- ¡AÑADIDO!
-            renderables.push({
-                type: 'element', // Se dibujan igual que un elemento
-                x: npc.x,
-                z: npc.z,
-                y: 0, 
-                definition: npcDef,
-                isHovered: isHovered // <-- ¡AÑADIDO!
-            });
-        }
-    }
-
-    // 3. Ordenar
-    renderables.sort((a, b) => (a.x + a.z) - (b.x + b.z));
-
-    // 4. Dibujar todo (¡MODIFICADO!)
-    for (const item of renderables) {
-        const screenPos = project(item.x, item.y, item.z);
-        if (item.type === 'player') {
-            drawPlayer(item, screenPos);
-        } else if (item.type === 'element') {
-            if (item.definition.draw) {
-                // ¡Pasamos el flag isHovered a la función de dibujo!
-                item.definition.draw(ctx, item.definition, currentZoom, screenPos, item.isHovered);
-            }
-        }
-    }
-}
-
-// 13. Funciones de ayuda del bucle
-function updatePlayerPositions() {
-    for (const id in playersState) {
-        const targetPlayerData = playersState[id]; 
-        const playerMesh = interpolatedPlayersState[id]; 
-        if (!playerMesh || targetPlayerData.currentMap !== currentMapId) {
-            continue; 
-        }
-        const targetX = targetPlayerData.x;
-        const targetZ = targetPlayerData.z;
-        const dx = targetX - playerMesh.x;
-        const dz = targetZ - playerMesh.z;
-        const distance = Math.sqrt(dx * dx + dz * dz);
-        if (playerMesh.currentMap !== targetPlayerData.currentMap) {
-             playerMesh.x = targetX;
-             playerMesh.z = targetZ;
-             playerMesh.currentMap = targetPlayerData.currentMap;
-             continue;
-        }
-        if (distance < MOVEMENT_SPEED) {
-            playerMesh.x = targetX;
-            playerMesh.z = targetZ;
-        } else {
-            const normX = dx / distance;
-            const normZ = dz / distance;
-            playerMesh.x += normX * MOVEMENT_SPEED;
-            playerMesh.z += normZ * MOVEMENT_SPEED;
-        }
-    }
-}
-
-function updateNpcPositions() {
-    const now = Date.now();
-    for (const key in npcStates) {
-        const npc = npcStates[key];
-
-        // Mover NPC hacia su objetivo si está en movimiento
-        if (npc.isMoving) {
-            const dx = npc.targetX - npc.x;
-            const dz = npc.targetZ - npc.z;
-            const distance = Math.sqrt(dx * dx + dz * dz);
-
-            if (distance < NPC_MOVE_SPEED) {
-                // Ha llegado al destino
-                npc.x = npc.targetX;
-                npc.z = npc.targetZ;
-                npc.isMoving = false;
-                npc.lastMoveTime = now; // Reiniciar temporizador de espera
-
-                // Si está en una ruta, avanzar al siguiente punto
-                if (npc.movement === 'route' && npc.route && npc.route.length > 0) {
-                    npc.currentTargetIndex = (npc.currentTargetIndex + 1) % npc.route.length;
-                }
-
-            } else {
-                // Moverse hacia el destino
-                const normX = dx / distance;
-                const normZ = dz / distance;
-                npc.x += normX * NPC_MOVE_SPEED;
-                npc.z += normZ * NPC_MOVE_SPEED;
-            }
-        }
-        // Decidir si iniciar un nuevo movimiento
-        else {
-            if (npc.movement === 'route' && npc.route && npc.route.length > 0) {
-                // Iniciar movimiento hacia el siguiente punto de la ruta
-                const targetWaypoint = npc.route[npc.currentTargetIndex];
-                const targetX = targetWaypoint[0] + 0.5;
-                const targetZ = targetWaypoint[1] + 0.5;
-
-                if (npc.x !== targetX || npc.z !== targetZ) {
-                    npc.targetX = targetX;
-                    npc.targetZ = targetZ;
-                    npc.isMoving = true;
-                }
-                
-            } else if (npc.movement === 'random') {
-                // Iniciar movimiento aleatorio si ha esperado lo suficiente
-                if (now - npc.lastMoveTime > NPC_RANDOM_WAIT_TIME && Math.random() < NPC_RANDOM_MOVE_CHANCE) {
-                    const randomDir = Math.floor(Math.random() * 4);
-                    let targetX = npc.x;
-                    let targetZ = npc.z;
-
-                    if (randomDir === 0) targetX += 1; // Este
-                    else if (randomDir === 1) targetX -= 1; // Oeste
-                    else if (randomDir === 2) targetZ += 1; // Sur
-                    else if (randomDir === 3) targetZ -= 1; // Norte
-
-                    // Comprobar si la casilla es transitable
-                    if (isPositionPassable(targetX, targetZ)) {
-                        npc.targetX = targetX;
-                        npc.targetZ = targetZ;
-                        npc.isMoving = true;
-                    }
-                }
-            }
-            // Si el movimiento es 'still', isMoving siempre es false y no hace nada.
-        }
-    }
-}
-
-// --- ¡NUEVA FUNCIÓN! ---
-/**
- * Comprueba qué objeto interactuable está bajo el cursor.
- * Se llama en cada frame del gameLoop.
- */
-function updateHoveredState() {
-    if (!canvas) return;
-
-    // 1. Convertir pos del ratón a coordenadas del mundo
-    const worldCoords = inverseProject(mouseScreenPos.x, mouseScreenPos.y);
-    let foundKey = null;
-
-    // 2. Comprobar NPCs (que están en movimiento)
-    for (const [key, npc] of Object.entries(npcStates)) {
-        // Comprobar solo NPCs con diálogo
-        if (npc.interaction === 'dialog') {
-            const dist = Math.hypot(npc.x - worldCoords.x, npc.z - worldCoords.z);
-            if (dist < INTERACTION_RADIUS) {
-                foundKey = key;
-                break;
-            }
-        }
-    }
-
-    // 3. Comprobar Portales (que son estáticos)
-    if (!foundKey && currentMapData && currentMapData.tileGrid) {
-        for (let z = 0; z < currentMapData.height; z++) {
-            if (foundKey) break; // Salir del bucle exterior si ya encontramos uno
-            for (let x = 0; x < currentMapData.width; x++) {
-                const tile = currentMapData.tileGrid[z][x];
-                if (tile && typeof tile.e === 'object' && tile.e.id) {
-                    const elementDef = GAME_DEFINITIONS.elementTypes[tile.e.id];
-                    // Comprobar solo portales
-                    if (elementDef && elementDef.drawType === 'portal') {
-                        const dist = Math.hypot((x + 0.5) - worldCoords.x, (z + 0.5) - worldCoords.z);
-                        if (dist < INTERACTION_RADIUS) {
-                            foundKey = `portal_${z}_${x}`;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 4. Actualizar estado global y cursor
-    hoveredItemKey = foundKey;
-    canvas.style.cursor = hoveredItemKey ? 'pointer' : 'crosshair';
-}
-
-
-function drawGround(groundTypes) {
-    if (!currentMapData || !currentMapData.tileGrid) {
-        drawGroundGrid();
-        return;
-    }
-    const voidDef = groundTypes['void'] || { color: '#111' }; 
-    
-    for (let z = 0; z < currentMapData.height; z++) {
-        for (let x = 0; x < currentMapData.width; x++) {
-            const tile = currentMapData.tileGrid[z][x];
-            const groundDef = (tile && groundTypes[tile.g]) 
-                              ? groundTypes[tile.g] 
-                              : voidDef; 
-            
-            drawGroundTile(ctx, project, x, z, groundDef, currentZoom);
-        }
-    }
-}
-
-function drawGroundGrid() {
-    ctx.strokeStyle = '#4CAF50';
-    ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.5; 
-    const gridSize = 20;
-    for (let i = -gridSize; i <= gridSize; i++) {
-        let p1 = project(i, 0, -gridSize);
-        let p2 = project(i, 0, gridSize);
-        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
-        let p3 = project(-gridSize, 0, i);
-        let p4 = project(gridSize, 0, i);
-        ctx.beginPath(); ctx.moveTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.stroke();
-    }
-    ctx.globalAlpha = 1.0; 
-}
-
-function drawPlayer(player, screenPos) {
-    const scaledImgWidth = playerImgWidth * currentZoom;
-    const scaledImgHeight = playerImgHeight * currentZoom;
-    const fallbackWidth = 16 * currentZoom;
-    const fallbackHeight = 32 * currentZoom;
-
-    if (playerImgLoaded) {
-        ctx.drawImage(
-            playerImg,
-            screenPos.x - scaledImgWidth / 2,
-            screenPos.y - scaledImgHeight,
-            scaledImgWidth,
-            scaledImgHeight
-        );
-    } else {
-        ctx.fillStyle = (player.id === myPlayerId) ? '#00FFFF' : '#FF0000';
-        ctx.fillRect(
-            screenPos.x - fallbackWidth / 2,
-            screenPos.y - fallbackHeight,
-            fallbackWidth, 
-            fallbackHeight
-        );
-    }
-    ctx.fillStyle = 'white';
-    ctx.textAlign = 'center';
-    ctx.font = `${12 * currentZoom}px Inter`;
-    ctx.fillText(
-        player.id.substring(0, 6), 
-        screenPos.x, 
-        screenPos.y - scaledImgHeight - (5 * currentZoom)
+    // ¡NUEVO! Cámara Ortográfica para look isométrico
+    const aspect = window.innerWidth / window.innerHeight;
+    // ¡MODIFICADO! Usar la variable de zoom
+    camera = new THREE.OrthographicCamera(
+        cameraZoom * aspect / -2, 
+        cameraZoom * aspect / 2, 
+        cameraZoom / 2, 
+        cameraZoom / -2, 
+        0.1, 
+        1000 
     );
+    
+    // Actualizar posición y zoom iniciales
+    // cameraHeight y cameraDistance se leen de constantes
+    camera.position.set(cameraDistance, cameraHeight, cameraDistance);
+    camera.lookAt(0, 0, 0);
+
+    // Renderer
+    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.shadowMap.enabled = true;
+
+    // ¡ELIMINADO! OrbitControls
+    
+    // Luces
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+    scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    dirLight.position.set(10, 20, 5);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
+
+    // Raycaster (para clics)
+    raycaster = new THREE.Raycaster();
+    mouse = new THREE.Vector2();
+
+    // Listeners de Input
+    canvas.addEventListener('click', onCanvasClick);
+    canvas.addEventListener('mousemove', onCanvasMove); // Para hover
 }
 
-// 14. Funciones de Lógica de Juego (¡CORREGIDAS!)
-function isPositionPassable(worldX, worldZ) {
-    if (!currentMapData || !currentMapData.tileGrid) return false; 
-    const tileX = Math.floor(worldX);
-    const tileZ = Math.floor(worldZ);
-    if (tileX < 0 || tileX >= currentMapData.width || tileZ < 0 || tileZ >= currentMapData.height) {
-        return false;
+function resizeCanvas() {
+    if (camera && renderer) {
+        // Actualizar cámara Ortográfica
+        const aspect = window.innerWidth / window.innerHeight;
+        // ¡MODIFICADO! Usar la variable de zoom
+        camera.left = -cameraZoom * aspect;
+        camera.right = cameraZoom * aspect;
+        camera.top = cameraZoom;
+        camera.bottom = -cameraZoom;
+        camera.updateProjectionMatrix();
+
+        renderer.setSize(window.innerWidth, window.innerHeight);
     }
-    const tile = currentMapData.tileGrid[tileZ][tileX];
-    if (!tile) return false; 
-    
-    const groundDef = GAME_DEFINITIONS.groundTypes[tile.g];
-    const elementId = (typeof tile.e === 'object' && tile.e !== null) ? tile.e.id : tile.e;
-    const elementDef = GAME_DEFINITIONS.elementTypes[elementId];
-    
-    if (!groundDef || !elementDef) return false; 
-    
-    return groundDef.passable && elementDef.passable;
 }
 
-function getPortalDestination(worldX, worldZ) {
-    if (!currentMapData || !currentMapData.tileGrid) return null;
-    const tileX = Math.floor(worldX);
-    const tileZ = Math.floor(worldZ);
-    if (tileX < 0 || tileX >= currentMapData.width || tileZ < 0 || tileZ >= currentMapData.height) {
-        return null;
+// Helper para cargar texturas con caché
+function loadTexture(src) {
+    if (!src) return null;
+    if (textureCache.has(src)) {
+        return textureCache.get(src);
     }
-    const tile = currentMapData.tileGrid[tileZ][tileX];
-    
-    if (tile && typeof tile.e === 'object' && tile.e.id) {
-        const elementId = tile.e.id;
-        const elementDef = GAME_DEFINITIONS.elementTypes[elementId];
-        
-        if (elementDef && elementDef.drawType === 'portal') 
-        {
-            if (tile.e.destMap && tile.e.destX !== null && tile.e.destZ !== null) {
-                return { 
-                    mapId: tile.e.destMap, 
-                    x: tile.e.destX + 0.5, 
-                    z: tile.e.destZ + 0.5 
-                };
-            }
-            else if (tile.e.destX !== null && tile.e.destZ !== null) {
-                return { 
-                    mapId: currentMapId, 
-                    x: tile.e.destX + 0.5, 
-                    z: tile.e.destZ + 0.5 
-                };
-            }
-        }
-    }
-    
-    return null;
+    const texture = loader.load(src, (tex) => {
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        textureCache.set(src, tex);
+    });
+    return texture;
 }
 
+// 9. Lógica de UI (Movida desde logica.js y move-action.js)
 
-// ===================================
-// ### ¡NUEVAS FUNCIONES AÑADIDAS (NPC Interaction)! ###
-// ===================================
+function showNpcModal(npc) {
+    // ... (código sin cambios)
+    const elementDef = GAME_DEFINITIONS.elementTypes[npc.id];
+    let text = "Hola.";
+    
+    if (npc.interaction === 'dialog' && npc.dialogText) {
+        text = npc.dialogText;
+    } else if (elementDef && elementDef.interaction === 'dialog' && elementDef.dialogText) {
+        text = elementDef.dialogText;
+    }
 
-function showNpcModal(text) {
-    if (npcModalContainer) {
-        npcModalText.textContent = text || "Hola, viajero.";
+    if (npcModalText && npcModalContainer) {
+        npcModalText.textContent = text;
         npcModalContainer.className = 'npc-modal-visible';
     }
 }
@@ -715,61 +214,659 @@ function hideNpcModal() {
     }
 }
 
-/**
- * Comprueba si hay un NPC interactuable en la casilla (worldX, worldZ)
- * y si el jugador está dentro del rango.
- */
-function getNpcInteraction(worldX, worldZ) { // worldX/Z es la posición del CLIC
-    // 1. Asegurarse de que el jugador y el mapa existan
-    const myPlayer = interpolatedPlayersState[myPlayerId];
-    if (!myPlayer) {
-        return false;
-    }
+function showBlockedClick(screenX, screenY) {
+    // ... (código sin cambios)
+    let indicator = document.createElement('div');
+    indicator.textContent = '❌';
+    indicator.style.position = 'absolute';
+    indicator.style.left = `${screenX - 12}px`;
+    indicator.style.top = `${screenY - 12}px`;
+    indicator.style.fontSize = '24px';
+    indicator.style.pointerEvents = 'none';
+    indicator.style.zIndex = '100';
+    indicator.style.transition = 'opacity 0.5s, transform 0.5s';
+    indicator.style.opacity = '1';
+    indicator.style.transform = 'scale(1)';
+    
+    document.body.appendChild(indicator);
 
-    // 2. Encontrar el NPC más cercano al clic
-    let clickedNpc = null;
-    // --- ¡¡¡CORRECCIÓN AQUÍ!!! ---
-    // Usamos INTERACTION_RADIUS (el radio visual/sombra) para ver si "acertamos" el clic
-    let minDistanceSq = INTERACTION_RADIUS * INTERACTION_RADIUS; 
+    setTimeout(() => {
+        indicator.style.opacity = '0';
+        indicator.style.transform = 'scale(1.5)';
+    }, 100); 
 
-    for (const npc of Object.values(npcStates)) {
-        const dx = npc.x - worldX; // Distancia del NPC al CLIC
-        const dz = npc.z - worldZ;
-        const distanceSq = dx * dx + dz * dz;
+    setTimeout(() => {
+        document.body.removeChild(indicator);
+    }, 600);
+}
 
-        if (distanceSq < minDistanceSq) {
-            minDistanceSq = distanceSq;
-            clickedNpc = npc;
+// 10. Lógica de Input 3D (Raycasting)
+
+function onCanvasClick(event) {
+    // ... (código sin cambios)
+    if (!myPlayerId || !db || !canvas || !logica.isPositionPassable) return;
+    if (event.target !== canvas) return;
+
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+
+    const intersects = raycaster.intersectObjects(interactableObjects);
+    if (intersects.length === 0) return;
+
+    const intersection = intersects[0];
+    const targetPoint = intersection.point;
+    const targetObject = intersection.object;
+
+    if (targetObject.userData.type === 'npc') {
+        const npcKey = targetObject.userData.key;
+        const interactionHappened = logica.getNpcInteraction(npcStates[npcKey]);
+        if (interactionHappened) {
+            showNpcModal(npcStates[npcKey]); 
+            return; 
         }
     }
-
-    if (!clickedNpc) {
-        return false; // No se hizo clic cerca de ningún NPC (dentro del radio de la sombra)
+    
+    if (targetObject.userData.type === 'portal') {
+         const portalDest = logica.getPortalDestination(targetObject.userData.definition);
+         if (portalDest) {
+            const localMapId = currentMapId;
+            if (portalDest.mapId && portalDest.mapId !== localMapId) {
+                update(myPlayerRef, {
+                    x: portalDest.x,
+                    z: portalDest.z,
+                    currentMap: portalDest.mapId
+                });
+            } else {
+                update(myPlayerRef, {
+                    x: portalDest.x,
+                    z: portalDest.z
+                });
+            }
+            return; 
+         }
     }
 
-    // 3. Comprobar si es un NPC con diálogo
-    if (clickedNpc.interaction !== 'dialog') {
-        return false; // No tiene diálogo
+    const playerPos = playersState[myPlayerId];
+    if (!playerPos) return;
+    const startPos = { x: playerPos.x, z: playerPos.z };
+
+    const finalValidPos = findLastValidPosition(
+        startPos,
+        targetPoint, 
+        logica.isPositionPassable 
+    );
+
+    const distToFinalPos = Math.hypot(finalValidPos.x - startPos.x, finalValidPos.z - startPos.z);
+    
+    if (distToFinalPos < 0.25) {
+        showBlockedClick(event.clientX, event.clientY);
+        return;
+    }
+
+    update(myPlayerRef, {
+        x: finalValidPos.x,
+        z: finalValidPos.z
+    });
+}
+
+function onCanvasMove(event) {
+    // ... (código sin cambios)
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(interactableObjects);
+
+    if (intersects.length > 0) {
+        const type = intersects[0].object.userData.type;
+        if (type === 'npc' || type === 'portal') {
+            canvas.style.cursor = 'pointer';
+        } else {
+            canvas.style.cursor = 'default';
+        }
+    } else {
+        canvas.style.cursor = 'default';
+    }
+}
+
+// 11. ¡NUEVO! Funciones de Control de Cámara
+
+function rotateCameraLeft() {
+    targetCameraAngle -= CAMERA_ROTATE_STEP; // 90 grados -> 45 grados
+}
+
+function rotateCameraRight() {
+    targetCameraAngle += CAMERA_ROTATE_STEP; // 90 grados -> 45 grados
+}
+
+function zoomIn() {
+    // Un zoom más pequeño significa una vista más cercana
+    setCameraZoom(cameraZoom - CAMERA_ZOOM_STEP);
+}
+
+function zoomOut() {
+    // Un zoom más grande significa una vista más lejana
+    setCameraZoom(cameraZoom + CAMERA_ZOOM_STEP);
+}
+
+function onMouseWheel(event) {
+    event.preventDefault();
+    // Normalizar la rueda del ratón
+    const delta = event.deltaY > 0 ? 1 : -1;
+    setCameraZoom(cameraZoom + delta * (CAMERA_ZOOM_STEP / 2)); // Zoom con rueda más suave
+}
+
+/**
+ * ¡MODIFICADO! Actualiza el frustum de la cámara ortográfica para simular el zoom.
+ */
+function setCameraZoom(newZoom) {
+    // Aplicar límites
+    cameraZoom = THREE.MathUtils.clamp(newZoom, CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM);
+    
+    const aspect = window.innerWidth / window.innerHeight;
+    camera.left = -cameraZoom * aspect;
+    camera.right = cameraZoom * aspect;
+    camera.top = cameraZoom;
+    camera.bottom = -cameraZoom;
+    camera.updateProjectionMatrix();
+}
+
+/**
+ * Función helper para interpolar ángulos correctamente.
+ */
+function lerpAngle(start, end, amt) {
+    let difference = end - start;
+    if (difference > Math.PI) {
+        difference -= (2 * Math.PI); // Ir por el camino corto
+    } else if (difference < -Math.PI) {
+        difference += (2 * Math.PI); // Ir por el camino corto
+    }
+    return start + difference * amt;
+}
+
+
+// 12. Inicialización de Firebase (Refactorizada)
+
+async function initializeFirebase() {
+    // ... (código sin cambios)
+    try {
+        app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        db = getDatabase(app);
+        infoBar.textContent = "Autenticando...";
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                myPlayerId = user.uid;
+                myPlayerRef = ref(db, `moba-demo-players-3d/${myPlayerId}`);
+                infoBar.textContent = "Cargando definiciones del juego...";
+
+                GAME_DEFINITIONS = await loadGameDefinitions(db);
+                
+                logica.setLogicaDependencies({
+                    get currentMapData() { return currentMapData; },
+                    GAME_DEFINITIONS,
+                    interpolatedPlayersState,
+                    get myPlayerId() { return myPlayerId; },
+                    get playersState() { return playersState; },
+                    npcStates,
+                    get currentMapId() { return currentMapId; },
+                    canvas,
+                    npcModalContainer,
+                    npcModalText,
+                });
+
+                setMoveActionDependencies(myPlayerId, db, () => currentMapId);
+                setCollisionChecker(logica.isPositionPassable);
+                setPortalHandler(logica.getPortalDestination);
+                setNpcHandler(logica.getNpcInteraction); 
+
+                infoBar.innerHTML = `Conectado. <br> <strong>Tu UserID:</strong> ${myPlayerId.substring(0, 6)}<br><strong>Instrucciones:</strong> Clic/Toca para moverte. Usa la rueda/botones para zoom/rotar.`;
+
+                onDisconnect(myPlayerRef).remove();
+
+                onValue(myPlayerRef, (snapshot) => {
+                    const playerData = snapshot.val();
+                    if (playerData && playerData.currentMap !== currentMapId) {
+                        loadMap(playerData.currentMap);
+                    }
+                });
+                loadMap(currentMapId);
+            } else {
+                signInAnonymously(auth);
+            }
+        });
+    } catch (error) {
+        console.error("Error al inicializar Firebase:", error);
+        infoBar.textContent = "Error al inicializar Firebase.";
+    }
+}
+
+// 13. Función para construir el mundo 3D
+
+function clearWorld() {
+    // ... (código sin cambios)
+    for (const key in worldMeshes) {
+        scene.remove(worldMeshes[key]);
+        worldMeshes[key].geometry.dispose();
+    }
+    worldMeshes = {};
+    for (const key in spriteMeshes) {
+        // ¡MODIFICADO! Limpiar grupos
+        scene.remove(spriteMeshes[key]);
+        spriteMeshes[key].traverse((child) => {
+            if (child.isMesh) {
+                child.geometry.dispose();
+                // El material se comparte, así que solo lo disponemos una vez
+            }
+        });
+        // Disponer el material (si se comparte, debe hacerse con cuidado)
+        const firstChild = spriteMeshes[key].children[0];
+        if (firstChild && firstChild.isMesh) {
+             firstChild.material.map?.dispose();
+             firstChild.material.dispose();
+        }
+    }
+    spriteMeshes = {};
+    for (const key in npcMeshes) {
+        scene.remove(npcMeshes[key]);
+        npcMeshes[key].material.map?.dispose();
+        npcMeshes[key].material.dispose();
+        npcMeshes[key].geometry.dispose();
+    }
+    npcMeshes = {};
+    interactableObjects = [];
+}
+
+function buildWorld(tileGrid) {
+    // ... (código sin cambios)
+    clearWorld();
+    
+    const groundMaterialCache = {};
+    const blockMaterialCache = {};
+    
+    for (let z = 0; z < currentMapData.height; z++) {
+        for (let x = 0; x < currentMapData.width; x++) {
+            const tile = tileGrid[z][x];
+            if (!tile) continue;
+            
+            const groundDef = GAME_DEFINITIONS.groundTypes[tile.g] || GAME_DEFINITIONS.groundTypes['void'];
+            const height = tile.h || 1.0;
+            
+            // --- 1. Crear Suelo ---
+            if (height > 0) {
+                const geometry = new THREE.BoxGeometry(1, height, 1);
+                
+                if (!groundMaterialCache[tile.g]) {
+                    groundMaterialCache[tile.g] = [
+                        new THREE.MeshStandardMaterial({ map: loadTexture(groundDef.imgSrcRight || groundDef.imgSrcLeft), color: groundDef.color }), 
+                        new THREE.MeshStandardMaterial({ map: loadTexture(groundDef.imgSrcLeft || groundDef.imgSrcRight), color: groundDef.color }), 
+                        new THREE.MeshStandardMaterial({ map: loadTexture(groundDef.imgSrcTop), color: groundDef.color }), 
+                        new THREE.MeshStandardMaterial({ color: 0x332211 }), 
+                        new THREE.MeshStandardMaterial({ map: loadTexture(groundDef.imgSrcRight || groundDef.imgSrcLeft), color: groundDef.color }), 
+                        new THREE.MeshStandardMaterial({ map: loadTexture(groundDef.imgSrcLeft || groundDef.imgSrcRight), color: groundDef.color })
+                    ];
+                }
+                const materials = groundMaterialCache[tile.g];
+                const mesh = new THREE.Mesh(geometry, materials);
+                mesh.position.set(x + 0.5, height / 2, z + 0.5); 
+                mesh.receiveShadow = true;
+                mesh.userData = { type: 'ground', x, z }; 
+                
+                scene.add(mesh);
+                const key = `tile_${x}_${z}`;
+                worldMeshes[key] = mesh;
+                interactableObjects.push(mesh);
+            }
+
+            // --- 2. Crear Elementos (Bloques, Sprites, Portales) ---
+            const elementId = (typeof tile.e === 'object' && tile.e !== null) ? tile.e.id : tile.e;
+            const elementDef = GAME_DEFINITIONS.elementTypes[elementId];
+            if (!elementDef || elementDef.id === 'none') continue;
+
+            const elementKey = `el_${x}_${z}`;
+
+            if (elementDef.drawType === 'block') {
+                const blockHeight = elementDef.height || 1.0;
+                const blockGeo = new THREE.BoxGeometry(1, blockHeight, 1);
+                
+                if (!blockMaterialCache[elementId]) {
+                     blockMaterialCache[elementId] = [
+                        new THREE.MeshStandardMaterial({ map: loadTexture(elementDef.imgSrcRight || elementDef.imgSrcLeft) }),
+                        new THREE.MeshStandardMaterial({ map: loadTexture(elementDef.imgSrcLeft || elementDef.imgSrcRight) }),
+                        new THREE.MeshStandardMaterial({ map: loadTexture(elementDef.imgSrcTop) }),
+                        new THREE.MeshStandardMaterial({ color: 0x333333 }),
+                        new THREE.MeshStandardMaterial({ map: loadTexture(elementDef.imgSrcRight || elementDef.imgSrcLeft) }),
+                        new THREE.MeshStandardMaterial({ map: loadTexture(elementDef.imgSrcLeft || elementDef.imgSrcRight) })
+                    ];
+                }
+                const blockMesh = new THREE.Mesh(blockGeo, blockMaterialCache[elementId]);
+                blockMesh.position.set(x + 0.5, height + blockHeight / 2, z + 0.5);
+                blockMesh.castShadow = true;
+                blockMesh.userData = { type: 'block', x, z };
+                
+                scene.add(blockMesh);
+                worldMeshes[elementKey] = blockMesh;
+                interactableObjects.push(blockMesh);
+
+            // ¡MODIFICADO! Lógica para 'sprite' (árboles en cruz)
+            } else if (elementDef.drawType === 'sprite' || (elementDef.drawType === 'portal' && elementDef.imgSrc)) {
+                
+                const map = loadTexture(elementDef.imgSrc);
+                const aspect = (elementDef.baseWidth || 1) / (elementDef.baseHeight || 1);
+                const planeHeight = (elementDef.baseHeight || 128) / 100; 
+                const planeWidth = planeHeight * aspect;
+
+                // Usar el mismo material para ambos planos
+                const material = new THREE.MeshStandardMaterial({ 
+                    map: map,
+                    transparent: true, 
+                    side: THREE.DoubleSide, 
+                    alphaTest: 0.1 
+                });
+                
+                // ¡NUEVO! Crear un grupo para los dos planos
+                const crossGroup = new THREE.Group();
+                crossGroup.position.set(x + 0.5, height + (planeHeight / 2), z + 0.5);
+                
+                // Plano 1 (Z-axis)
+                const geometry1 = new THREE.PlaneGeometry(planeWidth, planeHeight);
+                const planeMesh1 = new THREE.Mesh(geometry1, material);
+                planeMesh1.castShadow = true;
+                // Asignar userData al mesh individual para el raycasting
+                planeMesh1.userData = { type: elementDef.drawType, x, z, key: elementKey, definition: elementDef };
+                crossGroup.add(planeMesh1);
+                
+                // Plano 2 (X-axis, rotado 90 grados)
+                const geometry2 = new THREE.PlaneGeometry(planeWidth, planeHeight);
+                const planeMesh2 = new THREE.Mesh(geometry2, material);
+                planeMesh2.rotation.y = Math.PI / 2; // Girar 90 grados
+                planeMesh2.castShadow = true;
+                // Asignar userData al mesh individual para el raycasting
+                planeMesh2.userData = { type: elementDef.drawType, x, z, key: elementKey, definition: elementDef };
+                crossGroup.add(planeMesh2);
+
+                scene.add(crossGroup);
+                spriteMeshes[elementKey] = crossGroup; // Guardar el grupo
+
+                if (elementDef.drawType === 'portal') {
+                    interactableObjects.push(planeMesh1, planeMesh2);
+                }
+            
+            } else if (elementDef.drawType === 'portal' && !elementDef.imgSrc) {
+                const portalGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.2, 16);
+                const portalMat = new THREE.MeshBasicMaterial({ color: 0x00FFFF, transparent: true, opacity: 0.5 });
+                const portalMesh = new THREE.Mesh(portalGeo, portalMat);
+                portalMesh.position.set(x + 0.5, height + 0.1, z + 0.5);
+                
+                portalMesh.userData = { type: 'portal', x, z, key: elementKey, definition: elementDef };
+                interactableObjects.push(portalMesh);
+                
+                scene.add(portalMesh);
+                worldMeshes[elementKey] = portalMesh;
+            }
+        }
+    }
+}
+
+// 14. Carga de Mapas (Refactorizada)
+
+function loadMap(mapId) {
+    // ... (código sin cambios)
+    console.log(`Cargando mapa: ${mapId}`);
+    if (mapListener) off(mapRef, 'value', mapListener);
+    if (playersListener) {
+        const oldQuery = query(ref(db, 'moba-demo-players-3d'), orderByChild('currentMap'), equalTo(currentMapId));
+        off(oldQuery, 'value', playersListener);
+    }
+
+    playersState = {};
+    npcStates = {};
+    currentMapId = mapId;
+
+    logica.setLogicaDependencies({
+        get currentMapData() { return currentMapData; },
+        GAME_DEFINITIONS,
+        interpolatedPlayersState,
+        get myPlayerId() { return myPlayerId; },
+        get playersState() { return playersState; },
+        npcStates,
+        get currentMapId() { return currentMapId; },
+        canvas, npcModalContainer, npcModalText,
+    });
+
+    mapRef = ref(db, `moba-demo-maps/${mapId}`);
+    mapListener = onValue(mapRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data && data.tiles) {
+            data.tileGrid = [];
+            for (let z = 0; z < data.height; z++) {
+                const row = [];
+                for (let x = 0; x < data.width; x++) {
+                    const tile = data.tiles[z * data.width + x] || { g: 'void', e: 'none', h: 1.0 };
+                    if (tile.h === undefined) tile.h = 1.0;
+                    row.push(tile);
+                }
+                data.tileGrid.push(row);
+            }
+            currentMapData = data;
+            
+            buildWorld(currentMapData.tileGrid);
+
+            npcStates = {};
+            for (let z = 0; z < currentMapData.height; z++) {
+                for (let x = 0; x < currentMapData.width; x++) {
+                    const tile = currentMapData.tileGrid[z][x];
+                    if (tile && typeof tile.e === 'object' && tile.e.id) {
+                        const elementDef = GAME_DEFINITIONS.elementTypes[tile.e.id];
+                        if (elementDef && elementDef.drawType === 'npc') {
+                            const npcKey = `npc_${z}_${x}`;
+                            const groundHeight = logica.getGroundHeightAt(x + 0.5, z + 0.5);
+                            npcStates[npcKey] = {
+                                ...tile.e,
+                                id: tile.e.id, 
+                                x: x + 0.5,
+                                z: z + 0.5,
+                                y: groundHeight + playerSize, 
+                                targetX: x + 0.5,
+                                targetZ: z + 0.5,
+                                isMoving: false,
+                                lastMoveTime: Date.now(),
+                            };
+                            spawnNpcMesh(npcStates[npcKey], npcKey);
+                        }
+                    }
+                }
+            }
+            
+            let spawnPos = data.startPosition 
+                ? { x: data.startPosition.x + 0.5, z: data.startPosition.z + 0.5 }
+                : { x: (data.width / 2) + 0.5, z: (data.height / 2) + 0.5 };
+            
+            onValue(myPlayerRef, (playerSnap) => {
+                if (!playerSnap.exists()) {
+                    set(myPlayerRef, {
+                        id: myPlayerId, x: spawnPos.x, z: spawnPos.z, currentMap: mapId
+                    });
+                }
+            }, { onlyOnce: true });
+
+        } else {
+            console.warn(`No se encontraron datos para el mapa ${mapId}.`);
+            currentMapData = null;
+        }
+    });
+
+    const playersQuery = query(ref(db, 'moba-demo-players-3d'), orderByChild('currentMap'), equalTo(mapId));
+    playersListener = onValue(playersQuery, (snapshot) => {
+        playersState = snapshot.val() || {};
+        
+        for (const id in playersState) {
+            if (!interpolatedPlayersState[id]) {
+                const groundHeight = logica.getGroundHeightAt(playersState[id].x, playersState[id].z);
+                interpolatedPlayersState[id] = {
+                    ...playersState[id],
+                    y: groundHeight + playerSize 
+                };
+                if (!playerMeshes[id]) {
+                    spawnPlayerMesh(interpolatedPlayersState[id]);
+                }
+            }
+        }
+        for (const id in playerMeshes) {
+            if (!playersState[id]) {
+                scene.remove(playerMeshes[id]);
+                playerMeshes[id].geometry.dispose();
+                playerMeshes[id].material.dispose();
+                delete playerMeshes[id];
+                delete interpolatedPlayersState[id];
+            }
+        }
+    });
+
+    if (!isGameLoopRunning) {
+        isGameLoopRunning = true;
+        gameLoop();
+    }
+}
+
+// 15. Funciones de Spawning
+
+function spawnPlayerMesh(state) {
+    // ... (código sin cambios)
+    const geometry = new THREE.BoxGeometry(0.8, playerSize, 0.8);
+    const material = new THREE.MeshStandardMaterial({ 
+        color: state.id === myPlayerId ? 0x00ffff : 0xff0000 
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(state.x, state.y - playerSize + (playerSize / 2), state.z); 
+    mesh.castShadow = true;
+    playerMeshes[state.id] = mesh;
+    scene.add(mesh);
+}
+
+function spawnNpcMesh(state, key) {
+    // ... (código sin cambios)
+    // Esta función ya crea un solo plano, lo cual es correcto para el NPC
+    // que rotará para mirar a la cámara.
+    const elementDef = GAME_DEFINITIONS.elementTypes[state.id];
+    if (!elementDef) {
+        console.warn(`No se encontró definición para NPC con id ${state.id}`);
+        return;
+    }
+
+    const map = loadTexture(elementDef.imgSrc);
+    
+    const aspect = (elementDef.baseWidth || 1) / (elementDef.baseHeight || 1);
+    const planeHeight = (elementDef.baseHeight || 128) / 100; 
+    const planeWidth = planeHeight * aspect;
+
+    const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+    const material = new THREE.MeshStandardMaterial({ 
+        map: map,
+        transparent: true, 
+        side: THREE.DoubleSide, 
+        alphaTest: 0.1
+    });
+    
+    const planeMesh = new THREE.Mesh(geometry, material);
+    
+    const groundY = state.y - playerSize;
+    planeMesh.position.set(state.x, groundY + (planeHeight / 2), state.z);
+    
+    planeMesh.castShadow = true;
+    planeMesh.userData = { 
+        type: 'npc', 
+        key: key,
+        planeHeight: planeHeight 
+    };
+    
+    npcMeshes[key] = planeMesh;
+    scene.add(planeMesh);
+    interactableObjects.push(planeMesh);
+}
+
+
+// 16. Bucle Principal del Juego (¡MODIFICADO!)
+
+function gameLoop() {
+    if (!isGameLoopRunning) return;
+    requestAnimationFrame(gameLoop);
+    if (!renderer || !scene || !camera) return;
+
+    // 1. Actualizar lógica de estado
+    logica.updatePlayerPositions();
+    logica.updateNpcPositions();
+
+    // 2. Sincronizar Meshes 3D
+    for (const id in interpolatedPlayersState) {
+        const state = interpolatedPlayersState[id]; 
+        const mesh = playerMeshes[id];
+        if (mesh) {
+            const targetPos = new THREE.Vector3(state.x, state.y - (playerSize / 2), state.z);
+            mesh.position.lerp(targetPos, PLAYER_LERP_AMOUNT);
+            
+            // Rotar jugador según el movimiento
+            if (mesh.lastPos) {
+                const dx = mesh.position.x - mesh.lastPos.x;
+                const dz = mesh.position.z - mesh.lastPos.z;
+                if (Math.abs(dx) > 0.01 || Math.abs(dz) > 0.01) {
+                    const angle = Math.atan2(dx, dz);
+                    mesh.rotation.y = angle;
+                }
+            }
+            mesh.lastPos = mesh.position.clone();
+        }
     }
     
-    // 4. ¡Es un NPC con diálogo! Comprobar la distancia del JUGADOR al NPC.
-    // (Aquí seguimos usando MELEE_RANGE, que es el rango de "hablar")
-    const playerX = myPlayer.x;
-    const playerZ = myPlayer.z;
-    const npcX = clickedNpc.x;
-    const npcZ = clickedNpc.z;
-
-    const distance = Math.sqrt(Math.pow(playerX - npcX, 2) + Math.pow(playerZ - npcZ, 2));
-
-    if (distance <= MELEE_RANGE) {
-        // 5. ¡En rango! Mostrar el modal y detener el movimiento
-        console.log(`Interactuando con NPC ${clickedNpc.id}. Distancia: ${distance}`);
-        showNpcModal(clickedNpc.dialogText);
-        return true; // ¡Interacción exitosa!
-    } else {
-        // 6. Fuera de rango.
-        console.log(`NPC ${clickedNpc.id} demasiado lejos. Distancia: ${distance}`);
-        return false;
+    for (const key in npcStates) {
+        const state = npcStates[key]; 
+        const mesh = npcMeshes[key];
+        if (mesh && mesh.userData.planeHeight) {
+            const groundY = state.y - playerSize;
+            const planeHeight = mesh.userData.planeHeight;
+            const targetY = groundY + (planeHeight / 2);
+            const targetPos = new THREE.Vector3(state.x, targetY, state.z);
+            mesh.position.lerp(targetPos, PLAYER_LERP_AMOUNT);
+            
+            // ¡MODIFICADO! Hacer que el NPC mire a la cámara (en eje Y)
+            mesh.lookAt(camera.position.x, mesh.position.y, camera.position.z);
+        }
     }
+    
+    // ¡NUEVO! Rotar los 'sprites' (árboles) para que miren a la cámara también
+    // (Esto es opcional al método de cruz, pero más simple de implementar)
+    // Comentado por ahora para usar el método de "cruz"
+    /*
+    for (const key in spriteMeshes) {
+        const mesh = spriteMeshes[key];
+        // Solo rotamos los que son 'sprite', no portales-con-imagen
+        if (mesh.userData.type === 'sprite') {
+            mesh.lookAt(camera.position.x, mesh.position.y, camera.position.z);
+        }
+    }
+    */
+    // Los 'spriteMeshes' que son grupos (en cruz) no necesitan rotar.
+
+    // 3. ¡NUEVO! Actualizar Cámara Isométrica
+    if (playerMeshes[myPlayerId]) {
+        // Mover el punto de mira de la cámara
+        cameraTarget.lerp(playerMeshes[myPlayerId].position, 0.1);
+    }
+    
+    // Interpolar el ángulo de rotación
+    cameraAngle = lerpAngle(cameraAngle, targetCameraAngle, CAMERA_ROTATE_SPEED);
+
+    // ¡MODIFICADO! Calcular la nueva posición de la cámara
+    // Usamos 'cameraDistance' para el offset X/Z y 'cameraHeight' para la Y
+    const newCamX = cameraTarget.x + cameraDistance * Math.cos(cameraAngle);
+    const newCamZ = cameraTarget.z + cameraDistance * Math.sin(cameraAngle);
+    
+    // ¡MODIFICADO! La altura Y de la cámara ahora es relativa al jugador
+    camera.position.set(newCamX, cameraTarget.y + cameraHeight, newCamZ); 
+    camera.lookAt(cameraTarget); // Apuntar siempre al jugador
+
+    // 4. Renderizar
+    renderer.render(scene, camera);
 }
 
