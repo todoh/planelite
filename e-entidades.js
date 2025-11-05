@@ -1,8 +1,7 @@
 import { getDatabase, ref, set, get, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 // --- ¡NUEVA IMPORTACIÓN! ---
 // Importamos la función para construir la URL desde el archivo de constantes del juego.
-import { getFirebaseStorageUrl } from '../constantes.js';
-
+import { getFirebaseStorageUrl } from './constantes.js';
 // --- Caché de Imágenes ---
 export const imageCache = {};
 

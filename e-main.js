@@ -10,8 +10,7 @@ import * as Entidades from './e-entidades.js';
 // Importar la caché de imágenes
 import { imageCache } from './e-entidades.js';
 // Importamos la función para construir la URL desde el archivo de constantes del juego.
-import { getFirebaseStorageUrl } from '../constantes.js';
-
+import { getFirebaseStorageUrl } from './constantes.js';
 // --- Configuración de Firebase (Variables Globales) ---
 let db;
 let auth;
