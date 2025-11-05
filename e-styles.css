@@ -1,0 +1,330 @@
+body {
+    font-family: 'Inter', sans-serif;
+    overscroll-behavior: none;
+}
+canvas {
+    border: 2px solid #374151; /* gray-700 */
+    cursor: crosshair;
+    image-rendering: pixelated;
+    touch-action: none;
+}
+#map-list {
+    max-height: 30vh;
+}
+.def-list {
+    max-height: 30vh;
+}
+
+#loading-indicator {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    display: none; 
+}
+
+#loading-spinner {
+    width: 3rem; /* w-12 */
+    height: 3rem; /* h-12 */
+    border-width: 4px; /* border-4 */
+    border-color: #ffffff; /* border-white */
+    border-top-color: #3b82f6; /* border-t-blue-500 */
+    border-radius: 9999px; /* rounded-full */
+    animation: spin 1s linear infinite; /* animate-spin */
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+#notification {
+    position: fixed;
+    top: 1.25rem; /* top-5 */
+    right: 1.25rem; /* right-5 */
+    color: #ffffff; /* text-white */
+    padding: 0.75rem 1.5rem; /* px-6 py-3 */
+    border-radius: 0.5rem; /* rounded-lg */
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-lg */
+    transition-property: all;
+    transition-duration: 300ms;
+    z-index: 200;
+    display: none;
+}
+
+/* Estilos para pestañas */
+.tab-button.active {
+    background-color: #374151; /* bg-gray-700 */
+    color: #ffffff; /* text-white */
+}
+.tab-button.inactive {
+    background-color: #1f2937; /* bg-gray-800 */
+    color: #9ca3af; /* text-gray-400 */
+}
+.tab-button.inactive:hover {
+    background-color: #374151; /* hover:bg-gray-700 */
+}
+.tab-content {
+     background-color: #374151; /* bg-gray-700 */
+     padding: 1rem; /* p-4 */
+     border-bottom-left-radius: 0.5rem; /* rounded-b-lg */
+     border-bottom-right-radius: 0.5rem;
+     border-top-right-radius: 0.5rem; /* rounded-tr-lg */
+}
+
+.tool-palette {
+    max-height: 70vh; 
+    overflow-y: auto;
+    padding: 0.5rem;
+    background-color: #374151; /* bg-gray-700 */
+    border-radius: 0.25rem;
+}
+
+/* Scrollbar */
+.tool-palette::-webkit-scrollbar, #image-gallery::-webkit-scrollbar {
+  width: 8px;
+}
+.tool-palette::-webkit-scrollbar-track, #image-gallery::-webkit-scrollbar-track {
+  background: #1f2937; /* bg-gray-800 */
+  border-radius: 4px;
+}
+.tool-palette::-webkit-scrollbar-thumb, #image-gallery::-webkit-scrollbar-thumb {
+  background: #4b5563; /* bg-gray-600 */
+  border-radius: 4px;
+}
+.tool-palette::-webkit-scrollbar-thumb:hover, #image-gallery::-webkit-scrollbar-thumb:hover {
+  background: #6b7280; /* bg-gray-500 */
+}
+
+/* Botones de Colapsar */
+.toggle-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 48px;
+    background-color: #1f2937; /* bg-gray-800 */
+    color: #d1d5db; /* text-gray-300 */
+    border: 1px solid #4b5563; /* border-gray-600 */
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 10;
+    display: none; 
+    line-height: 44px;
+    font-size: 1.2rem;
+}
+.toggle-btn:hover {
+    background-color: #374151; /* bg-gray-700 */
+}
+@media (min-width: 1024px) {
+    .toggle-btn {
+        display: block;
+    }
+}
+.toggle-left-center {
+    left: -24px; 
+    border-radius: 0.5rem 0 0 0.5rem;
+    border-right: none;
+}
+.toggle-right-center {
+    right: -24px; 
+    border-radius: 0 0.5rem 0.5rem 0;
+    border-left: none;
+}
+
+/* Botones de Zoom */
+.zoom-btn {
+    width: 28px;
+    height: 28px;
+    background-color: #4b5563; /* bg-gray-600 */
+    color: white;
+    border: none;
+    border-radius: 0.25rem; /* rounded */
+    font-weight: bold;
+    font-size: 1.25rem; /* text-xl */
+    line-height: 1;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.zoom-btn:hover {
+    background-color: #6b7280; /* bg-gray-500 */
+}
+.zoom-btn:active {
+    background-color: #374151; /* bg-gray-700 */
+}
+
+/* Cursor de Paneo */
+canvas.panning {
+    cursor: move; 
+}
+
+
+/* --- ¡NUEVOS ESTILOS! Botones de Herramientas Visuales --- */
+
+.tool-button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem; /* p-2 */
+    background-color: #4b5563; /* bg-gray-600 */
+    color: white;
+    border-radius: 0.5rem; /* rounded-lg */
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); /* shadow-md */
+    transition: all 0.2s;
+    border: 2px solid transparent; /* Borde para el estado 'selected' */
+    cursor: pointer;
+    /* ¡Importante! Para que el texto no se desborde */
+    overflow: hidden; 
+}
+
+.tool-button:hover {
+    background-color: #374151; /* hover:bg-gray-700 */
+}
+
+/* Estado seleccionado (manejado por JS con clases de Tailwind) */
+.tool-button.bg-blue-600 {
+     border-color: #93c5fd; /* ring-blue-300 */
+     background-color: #2563eb !important; /* bg-blue-600, !important para sobreescribir */
+}
+
+.tool-button-img-container {
+    width: 48px; /* w-12 */
+    height: 48px; /* h-12 */
+    background-color: #1f2937; /* bg-gray-800 */
+    border-radius: 0.25rem; /* rounded */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border: 1px solid #6b7280; /* border-gray-500 */
+    flex-shrink: 0; /* Evitar que se encoja */
+}
+
+.tool-button-img-container.fallback {
+    font-size: 1.5rem; /* text-2xl */
+    color: #e5e7eb; /* text-gray-200 */
+    line-height: 1;
+}
+
+.tool-button-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    image-rendering: pixelated; /* Mantener estilo pixel art */
+}
+
+.tool-button-label {
+    margin-top: 0.25rem; /* mt-1 */
+    font-size: 0.75rem; /* text-xs */
+    font-weight: 500; /* font-medium */
+    color: #e5e7eb; /* text-gray-200 */
+    text-align: center;
+    width: 100%;
+    /* Truco para cortar texto con '...' */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap; 
+}
+
+/* Color especial para el botón 'void' */
+.tool-button[data-tool-id="void"] .tool-button-img-container.fallback {
+     background-color: #111111;
+     color: #9ca3af;
+}
+/* Color/estilo especial para 'none' */
+.tool-button[data-tool-id="none"] .tool-button-img-container.fallback {
+     font-size: 2rem;
+     color: #ef4444; /* text-red-500 */
+}
+
+/* --- ¡NUEVO! Estilos para el Gestor de Imágenes --- */
+
+/* Botón '...' para seleccionar imagen */
+.select-image-btn {
+    flex-shrink: 0;
+    width: 2.5rem; /* w-10 */
+    height: 2.5rem; /* h-10 (para alinear con el input) */
+    padding: 0.5rem;
+    font-weight: bold;
+    color: #4b5563; /* text-gray-600 */
+    background-color: #e5e7eb; /* bg-gray-200 */
+    border: 1px solid #d1d5db; /* border-gray-300 */
+    border-radius: 0.5rem; /* rounded-lg */
+    transition: all 0.2s;
+}
+.select-image-btn:hover {
+    background-color: #d1d5db; /* bg-gray-300 */
+    color: #1f2937; /* text-gray-800 */
+}
+
+
+/* Estilos de la galería de imágenes */
+.gallery-item {
+    position: relative;
+    border-radius: 0.5rem; /* rounded-lg */
+    overflow: hidden;
+    background-color: #374151; /* bg-gray-700 */
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); /* shadow-sm */
+    transition: all 0.2s;
+}
+
+.gallery-img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    image-rendering: pixelated;
+    background-color: #1f2937; /* bg-gray-800 */
+    cursor: pointer;
+    border-bottom: 1px solid #4b5563; /* border-gray-600 */
+}
+.gallery-img:hover {
+    opacity: 0.8;
+}
+
+.gallery-name {
+    display: block;
+    font-size: 0.75rem; /* text-xs */
+    color: #d1d5db; /* text-gray-300 */
+    padding: 0.5rem; /* p-2 */
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+}
+
+.gallery-delete-btn {
+    position: absolute;
+    top: 0.25rem; /* top-1 */
+    right: 0.25rem; /* right-1 */
+    width: 1.5rem; /* w-6 */
+    height: 1.5rem; /* h-6 */
+    border-radius: 9999px; /* rounded-full */
+    background-color: rgba(239, 68, 68, 0.9); /* bg-red-500/90 */
+    color: white;
+    font-weight: bold;
+    line-height: 1.5rem;
+    text-align: center;
+    font-size: 1rem;
+    cursor: pointer;
+    opacity: 0;
+    transition: all 0.2s;
+}
+.gallery-item:hover .gallery-delete-btn {
+    opacity: 1;
+}
+.gallery-delete-btn:hover {
+    background-color: rgba(220, 38, 38, 1); /* bg-red-600 */
+}

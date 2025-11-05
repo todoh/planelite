@@ -2,52 +2,444 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PLANELITE 3D</title>
-    <link rel="stylesheet" href="styles.css">
-
-    <!-- Importar Three.js y sus módulos -->
-    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
-    <script type="importmap">
-    {
-      "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
-      }
-    }
-    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor de Mapas 2.5D (v9.4 - Gestor de Imágenes)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="e-styles.css">
 </head>
-<body>
+<body class="bg-gray-900 text-white p-4 md:p-8">
 
-    <!-- Barra de información -->
-    <div id="info-bar">
-        Conectando a Firebase...
-        <br>
-        <strong>Instrucciones:</strong> ¡Toca el mapa para moverte!
+    <div class="max-w-screen-2xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6">
+        
+        <!-- Columna Izquierda (sin cambios) -->
+        <div id="left-column" class="lg:col-span-1 bg-gray-800 p-6 rounded-xl shadow-lg flex flex-col gap-6 relative transition-all duration-300">
+            <div>
+                <h2 class="text-2xl font-bold mb-4 text-blue-300">Definiciones</h2>
+                <div>
+                    <div class="flex border-b border-gray-600">
+                        <button id="tab-btn-ground" class="tab-button px-4 py-2 rounded-t-lg font-medium text-sm">Terrenos</button>
+                        <button id="tab-btn-block" class="tab-button px-4 py-2 rounded-t-lg font-medium text-sm">Bloques</button>
+                        <button id="tab-btn-portal" class="tab-button px-4 py-2 rounded-t-lg font-medium text-sm">Portales</button>
+                        <button id="tab-btn-entity" class="tab-button px-4 py-2 rounded-t-lg font-medium text-sm">Entidades</button>
+                    </div>
+
+                    <div id="tab-content-ground" class="tab-content">
+                        <div id="def-list-ground" class="def-list w-full bg-gray-700 p-2 rounded-lg overflow-y-auto mb-3"></div>
+                        <button id="add-new-ground-btn" class="w-full px-4 py-2 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 transition-colors">
+                            + Nuevo Terreno
+                        </button>
+                    </div>
+                    
+                    <div id="tab-content-block" class="tab-content" style="display: none;">
+                        <div id="def-list-block" class="def-list w-full bg-gray-700 p-2 rounded-lg overflow-y-auto mb-3"></div>
+                        <button id="add-new-block-btn" class="w-full px-4 py-2 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 transition-colors">
+                            + Nuevo Bloque
+                        </button>
+                    </div>
+
+                    <div id="tab-content-portal" class="tab-content" style="display: none;">
+                        <div id="def-list-portal" class="def-list w-full bg-gray-700 p-2 rounded-lg overflow-y-auto mb-3"></div>
+                        <button id="add-new-portal-btn" class="w-full px-4 py-2 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 transition-colors">
+                            + Nuevo Portal
+                        </button>
+                    </div>
+
+                    <div id="tab-content-entity" class="tab-content" style="display: none;">
+                        <div id="def-list-entity" class="def-list w-full bg-gray-700 p-2 rounded-lg overflow-y-auto mb-3"></div>
+                        <button id="add-new-entity-btn" class="w-full px-4 py-2 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 transition-colors">
+                            + Nueva Entidad
+                        </button>
+                    </div>
+
+                    </div>
+            </div>
+
+            <div>
+                <h2 class="text-2xl font-bold mb-4 text-blue-300">Gestión de Mapas</h2>
+                <div class="flex flex-col gap-4">
+                    <input type="text" id="map-id" value="map_001" placeholder="ID del Mapa..." class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <div class="flex gap-4">
+                        <button id="load-map-button" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-colors">Cargar</button>
+                        <button id="save-map-button" class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 transition-colors">Guardar</button>
+                    </div>
+                    <hr class="border-gray-600">
+                    <div class="grid grid-cols-2 gap-4">
+                        <input type="number" id="new-width" value="20" min="5" max="100" class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg" placeholder="Ancho">
+                        <input type="number" id="new-height" value="20" min="5" max="100" class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg" placeholder="Alto">
+                    </div>
+                    <button id="new-map-button" class="w-full px-4 py-2 bg-yellow-500 text-black font-medium rounded-lg shadow-md hover:bg-yellow-600 transition-colors">Nuevo Mapa</button>
+                </div>
+            </div>
+
+            <div>
+                <h2 class="text-2xl font-bold mb-4 text-blue-300">Mapas Guardados</h2>
+                <div id="map-list" class="w-full bg-gray-700 p-4 rounded-lg overflow-y-auto">
+                    <p class="text-gray-400">Cargando mapas...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Columna Central (sin cambios) -->
+        <div id="center-column" class="lg:col-span-2 bg-gray-800 p-6 rounded-xl shadow-lg flex flex-col items-center transition-all duration-300 relative">
+            
+            <button id="toggle-left-column" class="toggle-btn toggle-left-center">&lt;</button>
+            <button id="toggle-right-column" class="toggle-btn toggle-right-center">&gt;</button>
+
+            <p id="coords" class="mt-2 text-gray-400">Coordenadas: (0, 0)</p>
+            
+            <div class="flex flex-wrap justify-between items-center mb-4 w-full">
+                <button id="stop-route-edit-btn" class="hidden px-4 py-3 bg-red-600 text-white font-bold rounded-lg shadow-md hover:bg-red-700 transition-colors">
+                    Terminar Edición de Ruta
+                </button>
+                
+                <div class="flex items-center gap-4 ml-auto"> 
+                    <div class="flex items-center gap-1">
+                        <label class="text-gray-400">Zoom:</label>
+                        <button id="zoom-out-button" class="zoom-btn">-</button>
+                        <span id="zoom-display" class="text-gray-400 text-sm w-12 text-center">1.0x</span>
+                        <button id="zoom-in-button" class="zoom-btn">+</button>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <label for="paint-height-input" class="text-gray-400">Altura:</label>
+                        <input type="number" id="paint-height-input" value="1.0" min="0" step="0.5" class="bg-gray-700 border border-gray-600 rounded-lg px-2 py-1 text-white w-20 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div class="flex items-center gap-2"> 
+                        <label for="brush-size-select" class="text-gray-400">Pincel:</label>
+                        <select id="brush-size-select" class="bg-gray-700 border border-gray-600 rounded-lg px-2 py-1 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="1">1x1</option>
+                            <option value="3">3x3</option>
+                            <option value="5">5x5</option>
+                            <option value="7">7x7</option>
+                             <option value="9">9x9</option>
+                             <option value="11">11x11</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <canvas id="editor-canvas" width="800" height="600" class="bg-gray-900 rounded-lg w-full h-auto"></canvas>
+        </div>
+
+        <!-- Columna Derecha (sin cambios) -->
+        <div id="right-column" class="lg:col-span-1 bg-gray-800 p-6 rounded-xl shadow-lg flex flex-col gap-6 relative transition-all duration-300">
+            <h2 class="text-2xl font-bold mb-4 text-blue-300">Herramientas</h2>
+
+            <div>
+                <div class="flex border-b border-gray-600">
+                    <button id="tool-tab-ground" class="tab-button px-4 py-2 rounded-t-lg font-medium">Suelo</button>
+                    <button id="tool-tab-block" class="tab-button px-4 py-2 rounded-t-lg font-medium">Bloques</button>
+                    <button id="tool-tab-portal" class="tab-button px-4 py-2 rounded-t-lg font-medium">Portales</button>
+                    <button id="tool-tab-entity" class="tab-button px-4 py-2 rounded-t-lg font-medium">Entidades</button>
+                </div>
+
+                <div id="tool-content-ground" class="tab-content">
+                    <div id="ground-tools" class="tool-palette grid grid-cols-3 gap-4">
+                        <p class="text-gray-400 col-span-3">Cargando...</p>
+                    </div>
+                </div>
+                
+                <div id="tool-content-block" class="tab-content" style="display: none;">
+                    <div id="block-tools" class="tool-palette grid grid-cols-3 gap-4">
+                        <p class="text-gray-400 col-span-3">Cargando...</p>
+                    </div>
+                </div>
+
+                <div id="tool-content-portal" class="tab-content" style="display: none;">
+                    <div id="portal-tools" class="tool-palette grid grid-cols-3 gap-4">
+                        <p class="text-gray-400 col-span-3">Cargando...</p>
+                    </div>
+                </div>
+                
+                <div id="tool-content-entity" class="tab-content" style="display: none;">
+                    <div id="entity-tools" class="tool-palette grid grid-cols-3 gap-4">
+                        <p class="text-gray-400 col-span-3">Cargando...</p>
+                    </div>
+                </div>
+
+                </div>
+        </div>
+
     </div>
 
-    <!-- Canvas -->
-    <canvas id="game-canvas"></canvas>
-    
-    <!-- ¡NUEVO! Controles de Cámara Isométrica -->
-    <div id="camera-controls">
-        <button id="rotate-left">⟲</button>
-        <button id="zoom-in">+</button>
-        <button id="zoom-out">-</button>
-        <button id="rotate-right">⟳</button>
-    </div>
+    <!-- Modal de Portal (sin cambios) -->
+    <div id="portal-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4" style="display: none; z-index: 50;">
+        <div class="modal-content bg-white p-6 rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <h3 class="modal-title text-2xl font-bold mb-4 text-gray-800" id="portal-coords">Editar Destino del Portal</h3>
+            <div class="modal-body mb-6 space-y-4">
+                <p class="text-gray-600">Selecciona el mapa y las coordenadas de destino a las que este portal teletransportará.</p>
+                
+                <div>
+                    <label for="portal-dest-map" class="modal-label block text-sm font-medium text-gray-700 mb-1">Mapa de Destino:</label>
+                    <select id="portal-dest-map" class="modal-select w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900">
+                        <option value="">-- Selecciona un mapa --</option>
+                    </select>
+                </div>
+                
+                <p class="text-gray-600 text-sm">El jugador aparecerá en el centro de la casilla (X, Z) del mapa de destino.</p>
 
-    <!-- Modal de NPC -->
-    <div id="npc-modal-container" class="npc-modal-hidden">
-        <div id="npc-modal-content">
-            <p id="npc-modal-text">Texto del NPC irá aquí...</p>
-            <button id="npc-modal-close">Cerrar</button>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="portal-dest-x" class="modal-label block text-sm font-medium text-gray-700 mb-1">Destino X:</label>
+                        <input type="number" id="portal-dest-x" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" min="0">
+                    </div>
+                    <div>
+                        <label for="portal-dest-z" class="modal-label block text-sm font-medium text-gray-700 mb-1">Destino Z (Profundidad):</label>
+                        <input type="number" id="portal-dest-z" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" min="0">
+                    </div>
+                </div>
+
+                <p id="portal-error" class="text-red-500 text-sm hidden">Por favor, introduce datos válidos.</p>
+            </div>
+            <div class="modal-footer flex justify-end gap-3">
+                <button id="close-portal-button" class="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors">Cerrar</button>
+                <button id="save-portal-button" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">Guardar Destino</button>
+            </div>
         </div>
     </div>
     
-    <!-- Cargador del script principal -->
-    <script type="module" src="main.js"></script>
+    <!-- Modal de NPC (sin cambios) -->
+    <div id="npc-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4" style="display: none; z-index: 50;">
+        <div class="modal-content bg-white p-6 rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <h3 class="modal-title text-2xl font-bold mb-4 text-gray-800" id="npc-coords">Editar Instancia de Entidad</h3>
+            <div class="modal-body mb-6 space-y-4">
+                
+                <div>
+                    <label for="npc-instance-movement" class="modal-label block text-sm font-medium text-gray-700 mb-1">Tipo de Movimiento:</label>
+                    <select id="npc-instance-movement" class="modal-select w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900">
+                        <option value="still">Quieto</option>
+                        <option value="random">Aleatorio</option>
+                        <option value="route">Ruta</option>
+                    </select>
+                </div>
 
+                <div id="npc-instance-route-group" class="hidden">
+                    <label for="npc-instance-route" class="modal-label block text-sm font-medium text-gray-700 mb-1">Ruta (Array JSON):</label>
+                    <input type="text" id="npc-instance-route" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="[[x1, z1], [x2, z2]]">
+                    <p class="text-xs text-gray-500 mt-1">Ej: [[10, 5], [10, 6], [11, 6]] (Coordenadas de casillas)</p>
+                </div>
+                
+                <p id="npc-error" class="text-red-500 text-sm hidden">Error en los datos.</p>
+            </div>
+            <div class="modal-footer flex justify-end gap-3">
+                <button id="close-npc-button" class="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors">Cerrar</button>
+                <button id="edit-route-btn" type="button" class="px-4 py-2 bg-yellow-500 text-black rounded-lg hover:bg-yellow-600 transition-colors">Editar Ruta Visual</button>
+                <button id="save-npc-button" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">Guardar Entidad</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Definición (¡MODIFICADO!) -->
+    <div id="definition-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4" style="display: none; z-index: 100;">
+        <div class="modal-content bg-white p-6 rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <h3 class="modal-title text-2xl font-bold mb-4 text-gray-800" id="definition-modal-title">Editar Definición</h3>
+            <form id="definition-form" class="modal-body mb-6 space-y-4">
+                
+                <input type="hidden" id="def-type"> <input type="hidden" id="def-original-id">
+
+                <div>
+                    <label for="def-id" class="modal-label block text-sm font-medium text-gray-700 mb-1">ID (Único):</label>
+                    <input type="text" id="def-id" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: grass, tree_1" required>
+                    <p class="text-xs text-gray-500 mt-1">No usar espacios ni caracteres especiales. Ej: 'grass', 'rock_1', 'goblin', 'portal_bosque'.</p>
+                </div>
+                
+                <div id="def-common-fields" class="space-y-4">
+                    <div>
+                        <label for="def-passable" class="modal-label block text-sm font-medium text-gray-700 mb-1">Transitable (Passable):</label>
+                        <select id="def-passable" class="modal-select w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" required>
+                            <option value="true">Sí (El jugador puede pasar por encima)</option>
+                            <option value="false">No (El jugador colisiona)</option>
+                        </select>
+
+<label for="def-render-style" class="modal-label block text-sm font-medium text-gray-700 mb-1">Estilo de Renderizado (Juego):</label>
+                        <select id="def-render-style" class="modal-select w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900">
+                            <option value="cross">Cruz (Sprite 2D en cruz)</option>
+                            <option value="billboard">Plano (Sprite 2D mirando a cámara)</option>
+                            <option value="cubic">Cúbico (Caja texturizada)</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1">Cómo se verá esta entidad en el juego 3D.</p>
+                    </div>
+
+
+                    </div>
+                    
+                    <!-- ¡CAMBIO! Input de Imagen (Sprite) con botón -->
+                    <div>
+                        <label for="def-imgSrc" class="modal-label block text-sm font-medium text-gray-700 mb-1">Ruta de Imagen (Sprite):</label>
+                        <div class="flex items-center gap-2">
+                            <input type="text" id="def-imgSrc" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: tree_01.png, goblin.png">
+                            <button type="button" class="select-image-btn" data-target-input="def-imgSrc" title="Seleccionar imagen del gestor">...</button>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label for="def-symbol" class="modal-label block text-sm font-medium text-gray-700 mb-1">Símbolo del Editor:</label>
+                        <input type="text" id="def-symbol" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: 🌳, 🪨, 🌀, 👤">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="def-baseWidth" class="modal-label block text-sm font-medium text-gray-700 mb-1">Ancho Base (px):</Glabel>
+                            <input type="number" id="def-baseWidth" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: 700">
+                        </div>
+                        <div>
+                            <label for="def-baseHeight" class="modal-label block text-sm font-medium text-gray-700 mb-1">Alto Base (px):</label>
+                            <input type="number" id="def-baseHeight" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: 700">
+                        </div>
+                    </div>
+                     <p class="text-xs text-gray-500">Ancho/Alto del sprite original. Si se deja en blanco, usará el tamaño de la imagen.</p>
+                </div>
+                
+                <!-- ¡CAMBIO! Inputs de Bloque/Terreno con botones -->
+                <div id="def-block-fields" class="space-y-4 border-t border-gray-300 pt-4 mt-4" style="display: none;">
+                    <h4 class="text-lg font-medium text-gray-800">Propiedades de Bloque/Terreno</h4>
+                    <div>
+                        <label for="def-height" class="modal-label block text-sm font-medium text-gray-700 mb-1">Altura 3D (Y):</label>
+                        <input type="number" id="def-height" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" min="0.1" step="0.1" value="1.0">
+                        <p class="text-xs text-gray-500 mt-1">Altura del bloque en unidades del juego (ej: 1.0).</p>
+                    </div>
+                    <div>
+                        <label for="def-imgSrcTop" class="modal-label block text-sm font-medium text-gray-700 mb-1">Textura Superior (Top):</label>
+                        <div class="flex items-center gap-2">
+                            <input type="text" id="def-imgSrcTop" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: block_top.png">
+                            <button type="button" class="select-image-btn" data-target-input="def-imgSrcTop" title="Seleccionar imagen del gestor">...</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="def-imgSrcLeft" class="modal-label block text-sm font-medium text-gray-700 mb-1">Textura Izquierda (Left):</label>
+                         <div class="flex items-center gap-2">
+                            <input type="text" id="def-imgSrcLeft" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: block_side.png">
+                            <button type="button" class="select-image-btn" data-target-input="def-imgSrcLeft" title="Seleccionar imagen del gestor">...</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="def-imgSrcRight" class="modal-label block text-sm font-medium text-gray-700 mb-1">Textura Derecha (Right):</label>
+                        <div class="flex items-center gap-2">
+                            <input type="text" id="def-imgSrcRight" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: block_side.png">
+                            <button type="button" class="select-image-btn" data-target-input="def-imgSrcRight" title="Seleccionar imagen del gestor">...</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="def-ground-fields" class="space-y-4">
+                    <div>
+                        <label for="def-color" class="modal-label block text-sm font-medium text-gray-700 mb-1">Color de Fallback:</label>
+                        <input type="color" id="def-color" class="w-full h-10 p-1 border border-gray-300 rounded-lg">
+                    </div>
+                </div>
+
+                <!-- Interacciones (sin cambios) -->
+                <div id="def-interactions-container" class="space-y-4 border-t border-gray-300 pt-4 mt-4" style="display: none;">
+                    <h4 class="text-lg font-medium text-gray-800">Interacciones</h4>
+                    <div id="def-interactions-list" class="space-y-2">
+                        </div>
+                    <button id="add-interaction-btn" type="button" class="w-full px-4 py-2 bg-blue-500 text-white rounded-lg shadow-md hover:bg-blue-600 transition-colors">
+                        + Añadir Interacción
+                    </button>
+                </div>
+
+                <p id="definition-error" class="text-red-500 text-sm hidden">Por favor, completa los campos requeridos.</p>
+            </form>
+            <div class="modal-footer flex justify-end gap-3">
+                <button id="close-definition-button" class="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors">Cancelar</button>
+                <button id="save-definition-button" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">Guardar Definición</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Interacción (sin cambios) -->
+    <div id="interaction-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4" style="display: none; z-index: 150;">
+        <div class="modal-content bg-white p-6 rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <h3 class="modal-title text-2xl font-bold mb-4 text-gray-800" id="interaction-modal-title">Editar Interacción</h3>
+            <form id="interaction-form" class="modal-body mb-6 space-y-4">
+                <input type="hidden" id="interaction-index"> <div>
+                    <label for="interaction-label" class="modal-label block text-sm font-medium text-gray-700 mb-1">Etiqueta del Menú:</label>
+                    <input type="text" id="interaction-label" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: Talar, Recolectar, Hablar, Encender" required>
+                    <p class="text-xs text-gray-500 mt-1">El texto que verá el jugador en el botón.</p>
+                </div>
+
+                <div>
+                    <label for="interaction-action-type" class="modal-label block text-sm font-medium text-gray-700 mb-1">Tipo de Acción:</label>
+                    <select id="interaction-action-type" class="modal-select w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" required>
+                        <option value="none">Nada (Solo decorativo)</option>
+                        <option value="dialog">Mostrar Diálogo</option>
+                        <option value="collect_replace">Recolectar y Reemplazar (Talar)</option>
+                        <option value="replace_self">Reemplazar Entidad (Encender)</option>
+                        <option value="wait_replace">Esperar y Reemplazar (Crecer)</option>
+                        <option value="portal_teleport">Teletransportar (Portal)</option>
+                    </select>
+                </div>
+
+                <div id="interaction-dialog-group" class="space-y-2" style="display: none;">
+                    <label for="interaction-dialogText" class="modal-label block text-sm font-medium text-gray-700 mb-1">Texto de Diálogo:</label>
+                    <textarea id="interaction-dialogText" rows="3" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"></textarea>
+                </div>
+
+                <div id="interaction-replace-group" class="space-y-2" style="display: none;">
+                    <label for="interaction-replaceId" class="modal-label block text-sm font-medium text-gray-700 mb-1">ID de Reemplazo:</label>
+                    <input type="text" id="interaction-replaceId" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: 'none', 'stump', 'lampara_encendida'">
+                    <p class="text-xs text-gray-500 mt-1">La entidad que aparecerá. Usa 'none' para que desaparezca.</p>
+                </div>
+
+                <div id="interaction-wait-group" class="space-y-2" style="display: none;">
+                    <label for="interaction-wait-duration" class="modal-label block text-sm font-medium text-gray-700 mb-1">Duración de Espera (milisegundos):</label>
+                    <input type="number" id="interaction-wait-duration" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: 30000">
+                    <p class="text-xs text-gray-500 mt-1">Ej: 30000 = 30 segundos.</p>
+                </div>
+                
+                <div id="interaction-portal-group" class="space-y-2" style="display: none;">
+                     <p class="text-sm text-gray-600">El destino del portal se configura en la instancia del mapa, no aquí.</p>
+                </div>
+
+                <p id="interaction-error" class="text-red-500 text-sm hidden">Por favor, completa los campos requeridos.</p>
+            </form>
+            <div class="modal-footer flex justify-end gap-3">
+                <button id="close-interaction-button" class="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors">Cancelar</button>
+                <button id="save-interaction-button" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">Guardar Interacción</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- ¡¡¡NUEVO!!! Modal del Gestor de Imágenes -->
+    <div id="image-manager-modal" class="modal fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4" style="display: none; z-index: 200;">
+        <div class="modal-content bg-gray-800 p-6 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                 <h3 class="modal-title text-2xl font-bold text-white">Gestor de Imágenes (recursos/)</h3>
+                 <button id="close-image-manager-btn" class="text-gray-400 hover:text-white text-3xl">&times;</button>
+            </div>
+           
+            <div class="modal-body mb-6 flex-1 flex flex-col min-h-0">
+                
+                <!-- Sección de Subida -->
+                <div class="bg-gray-700 p-4 rounded-lg mb-4 flex items-center gap-4">
+                    <label for="image-upload-input" class="modal-label block text-sm font-medium text-gray-300">Subir nueva imagen:</label>
+                    <input type="file" id="image-upload-input" accept="image/png, image/jpeg, image/gif" class="flex-1 text-sm text-gray-300
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-lg file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-blue-600 file:text-white
+                        hover:file:bg-blue-700">
+                    <button id="image-upload-button" class="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">Subir</button>
+                </div>
+                
+                <!-- Galería de Imágenes -->
+                <div id="image-gallery" class="flex-1 bg-gray-900 p-4 rounded-lg overflow-y-auto grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-4">
+                    <!-- Las imágenes se cargarán aquí -->
+                    <p class="text-gray-500 col-span-full text-center">Cargando imágenes...</p>
+                </div>
+                
+                <p id="image-manager-error" class="text-red-500 text-sm hidden mt-2">Error.</p>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="loading-indicator">
+        <div id="loading-spinner"></div>
+    </div>
+    <div id="notification">
+        <p id="notification-message"></p>
+    </div>
+
+    <script type="module" src="e-main.js"></script>
 </body>
 </html>
-
