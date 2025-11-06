@@ -460,28 +460,38 @@ function openDefinitionModal(type, def = null) {
     defTypeInput.value = type;
     currentEditingInteractionsList = []; 
     
-    // Ocultar todos los campos específicos
+    // --- LÓGICA REFACTORIZADA ---
+
+    // 1. Ocultar todos los contenedores principales
     defGroundFields.style.display = 'none';
     defCommonFields.style.display = 'none';
     defBlockFields.style.display = 'none'; 
     defInteractionsContainer.style.display = 'none'; 
-    // --- ¡NUEVO! ---
-    if (defRenderStyleInput) defRenderStyleInput.parentElement.style.display = 'none';
-    // ---
-    
-    // Selectores para campos comunes
+
+    // 2. Obtener selectores de todos los campos comunes (los que están dentro de defCommonFields)
+    // ¡¡¡IMPORTANTE!!! Asumimos que CADA CAMPO está en su PROPIO DIV gracias al HTML corregido.
     const commonImgSrcEl = document.querySelector('label[for="def-imgSrc"]');
     const commonSymbolEl = document.querySelector('label[for="def-symbol"]');
     const commonPassableEl = document.querySelector('label[for="def-passable"]');
     const commonWidthHeightEl = defBaseWidthInput ? defBaseWidthInput.parentElement.parentElement : null;
-    const commonImgSrc = commonImgSrcEl ? commonImgSrcEl.parentElement.parentElement : null; // Ir al div padre
+    
+    // Ahora, commonPassable y renderStyleParent son DIVs DIFERENTES
+    const commonImgSrc = commonImgSrcEl ? commonImgSrcEl.parentElement.parentElement : null; // Sigue teniendo el botón dentro
     const commonSymbol = commonSymbolEl ? commonSymbolEl.parentElement : null;
     const commonPassable = commonPassableEl ? commonPassableEl.parentElement : null;
     const commonWidthHeight = commonWidthHeightEl;
+    const renderStyleParent = defRenderStyleInput ? defRenderStyleInput.parentElement : null;
+
+    // 3. Ocultar individualmente todos los campos comunes
+    if (commonImgSrc) commonImgSrc.style.display = 'none';
+    if (commonSymbol) commonSymbol.style.display = 'none';
+    if (commonPassable) commonPassable.style.display = 'none';
+    if (commonWidthHeight) commonWidthHeight.style.display = 'none';
+    if (renderStyleParent) renderStyleParent.style.display = 'none';
     
     defPassableInput.disabled = false;
     
-    // Cargar datos si es edición
+    // 4. Cargar datos si es edición (sin cambios)
     if (def) {
         definitionModalTitle.textContent = `Editar Definición (${type})`;
         defOriginalIdInput.value = def.id;
@@ -492,32 +502,27 @@ function openDefinitionModal(type, def = null) {
         defSymbolInput.value = def.symbol || '';
         defBaseWidthInput.value = def.baseWidth || '';
         defBaseHeightInput.value = def.baseHeight || '';
-        // --- ¡NUEVO! ---
         if (defRenderStyleInput) {
-            defRenderStyleInput.value = def.renderStyle || 'cross'; // 'cross' por defecto
+            defRenderStyleInput.value = def.renderStyle || 'cross';
         }
-        // ---
         currentEditingInteractionsList = def.interactions ? JSON.parse(JSON.stringify(def.interactions)) : [];
     } else {
         // Defaults si es nuevo
         definitionModalTitle.textContent = `Crear Nuevo (${type})`;
         defOriginalIdInput.value = '';
         defIdInput.readOnly = false;
-        // --- ¡NUEVO! ---
         if (defRenderStyleInput) {
-            defRenderStyleInput.value = 'cross'; // 'cross' por defecto
+            defRenderStyleInput.value = 'cross';
         }
-        // ---
     }
     
-    // Mostrar campos por tipo
+    // 5. Mostrar campos por tipo (Lógica simplificada)
     if (type === 'ground') {
+        if (defCommonFields) defCommonFields.style.display = 'block'; // Mostrar contenedor común
         if (defGroundFields) defGroundFields.style.display = 'block'; 
         if (defBlockFields) defBlockFields.style.display = 'block';
-        if (commonPassable) commonPassable.style.display = 'block';
-        if (commonImgSrc) commonImgSrc.style.display = 'none';
-        if (commonSymbol) commonSymbol.style.display = 'none';
-        if (commonWidthHeight) commonWidthHeight.style.display = 'none';
+        if (commonPassable) commonPassable.style.display = 'block'; // Mostrar SÓLO passable
+        
         if (def) {
             defColorInput.value = def.color || '#ffffff'; 
             defImgSrcTopInput.value = def.imgSrcTop || '';
@@ -527,34 +532,34 @@ function openDefinitionModal(type, def = null) {
     } else if (type === 'entity') {
         if (defCommonFields) defCommonFields.style.display = 'block';
         if (defInteractionsContainer) defInteractionsContainer.style.display = 'block';
+        // Mostrar todos los campos comunes
         if (commonPassable) commonPassable.style.display = 'block';
         if (commonImgSrc) commonImgSrc.style.display = 'block';
         if (commonSymbol) commonSymbol.style.display = 'block';
         if (commonWidthHeight) commonWidthHeight.style.display = 'block';
-        // --- ¡NUEVO! ---
-        if (defRenderStyleInput) defRenderStyleInput.parentElement.style.display = 'block';
-        // ---
-        if (defGroundFields) defGroundFields.style.display = 'none';
-        if (defBlockFields) defBlockFields.style.display = 'none';
+        if (renderStyleParent) renderStyleParent.style.display = 'block';
+        
     } else if (type === 'portal') {
         if (defCommonFields) defCommonFields.style.display = 'block';
         if (defInteractionsContainer) defInteractionsContainer.style.display = 'block';
+        // Mostrar campos comunes (igual que entity)
         if (commonPassable) commonPassable.style.display = 'block';
         if (commonImgSrc) commonImgSrc.style.display = 'block';
         if (commonSymbol) commonSymbol.style.display = 'block';
         if (commonWidthHeight) commonWidthHeight.style.display = 'block';
-        if (defGroundFields) defGroundFields.style.display = 'none';
-        if (defBlockFields) defBlockFields.style.display = 'none';
+        if (renderStyleParent) renderStyleParent.style.display = 'block';
+
     } else if (type === 'block') { 
         if (defCommonFields) defCommonFields.style.display = 'block';
         if (defBlockFields) defBlockFields.style.display = 'block'; 
         if (defInteractionsContainer) defInteractionsContainer.style.display = 'block';
+        
         if (commonPassable) commonPassable.style.display = 'block';
+        if (commonSymbol) commonSymbol.style.display = 'block'; // Mostrar Símbolo
+        
         defPassableInput.value = 'false'; 
         defPassableInput.disabled = true;
-        if (commonImgSrc) commonImgSrc.style.display = 'none';
-        if (commonWidthHeight) commonWidthHeight.style.display = 'none';
-        if (defGroundFields) defGroundFields.style.display = 'none';
+        
         if (def) {
             defSymbolInput.value = def.symbol || '🧱';
             defHeightInput.value = def.height || '1.0'; 
@@ -565,6 +570,9 @@ function openDefinitionModal(type, def = null) {
             defHeightInput.value = '1.0'; 
         }
     }
+
+    // --- FIN LÓGICA REFACTORIZADA ---
+
     renderInteractionsList(); 
     definitionModal.style.display = 'flex';
 }
