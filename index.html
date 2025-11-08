@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Editor de Mapas 2.5D (v9.4 - Gestor de Imágenes)</title>
+    <title>Editor de Mapas 2.5D (v10.1 - Escala GLB)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="e-styles.css">
 </head>
@@ -229,7 +229,7 @@
         </div>
     </div>
 
-    <!-- Modal de Definición (¡HTML CORREGIDO!) -->
+    <!-- Modal de Definición (¡MODIFICADO!) -->
     <div id="definition-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4" style="display: none; z-index: 100;">
         <div class="modal-content bg-white p-6 rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <h3 class="modal-title text-2xl font-bold mb-4 text-gray-800" id="definition-modal-title">Editar Definición</h3>
@@ -245,8 +245,6 @@
                 
                 <div id="def-common-fields" class="space-y-4">
                     
-                    <!-- ****** ¡CAMBIO! ****** -->
-                    <!-- El campo "Passable" ahora está en su propio DIV -->
                     <div>
                         <label for="def-passable" class="modal-label block text-sm font-medium text-gray-700 mb-1">Transitable (Passable):</label>
                         <select id="def-passable" class="modal-select w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" required>
@@ -255,26 +253,49 @@
                         </select>
                     </div>
 
-                    <!-- El campo "Render Style" está ahora separado -->
                     <div>
                         <label for="def-render-style" class="modal-label block text-sm font-medium text-gray-700 mb-1">Estilo de Renderizado (Juego):</label>
                         <select id="def-render-style" class="modal-select w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900">
                             <option value="cross">Cruz (Sprite 2D en cruz)</option>
                             <option value="billboard">Plano (Sprite 2D mirando a cámara)</option>
                             <option value="cubic">Cúbico (Caja texturizada)</option>
+                            <!-- ¡NUEVO! -->
+                            <option value="gltf">Modelo 3D (GLB)</option>
                         </select>
                         <p class="text-xs text-gray-500 mt-1">Cómo se verá esta entidad en el juego 3D.</p>
                     </div>
-                    <!-- ****** FIN DEL CAMBIO ****** -->
                     
+                    <!-- ¡NUEVO! Campo para el modelo GLB -->
+                    <div id="def-gltf-fields" class="space-y-4" style="display: none;">
+                        <div>
+                            <label for="def-modelSrc" class="modal-label block text-sm font-medium text-gray-700 mb-1">Archivo de Modelo (.glb):</label>
+                            <div class="flex items-center gap-2">
+                                <input type="text" id="def-modelSrc" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: tank.glb">
+                                <!-- ¡NUEVO! data-asset-type="model" -->
+                                <button type="button" class="select-image-btn" data-target-input="def-modelSrc" data-asset-type="model" title="Seleccionar modelo GLB del gestor">...</button>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">El nombre del archivo .glb subido al gestor.</p>
+                        </div>
+                        
+                        <!-- =========== ¡CAMBIO AQUÍ! =========== -->
+                        <div>
+                            <label for="def-modelScale" class="modal-label block text-sm font-medium text-gray-700 mb-1">Escala (Uniforme):</label>
+                            <input type="number" id="def-modelScale" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" value="1.0" step="0.1" min="0.1">
+                            <p class="text-xs text-gray-500 mt-1">Ej: 1.0 = tamaño original, 2.0 = doble, 0.5 = mitad.</p>
+                        </div>
+                        <!-- ======================================= -->
+                        
+                    </div>
 
                     <!-- Input de Imagen (Sprite) con botón -->
                     <div>
-                        <label for="def-imgSrc" class="modal-label block text-sm font-medium text-gray-700 mb-1">Ruta de Imagen (Sprite):</label>
+                        <label for="def-imgSrc" class="modal-label block text-sm font-medium text-gray-700 mb-1">Asset (Imagen o SVG):</label>
                         <div class="flex items-center gap-2">
-                            <input type="text" id="def-imgSrc" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: tree_01.png, goblin.png">
-                            <button type="button" class="select-image-btn" data-target-input="def-imgSrc" title="Seleccionar imagen del gestor">...</button>
+                            <input type="text" id="def-imgSrc" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: tree_01.png, svg:tank_svg">
+                            <!-- ¡MODIFICADO! data-asset-type="image" -->
+                            <button type="button" class="select-image-btn" data-target-input="def-imgSrc" data-asset-type="image" title="Seleccionar asset del gestor">...</button>
                         </div>
+                        <p class="text-xs text-gray-500 mt-1">Nombre de archivo (ej: 'tree.png') o ID de SVG (ej: 'svg:tank_svg'). Usado si el estilo NO es GLB.</p>
                     </div>
                     
                     <div>
@@ -284,14 +305,14 @@
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label for="def-baseWidth" class="modal-label block text-sm font-medium text-gray-700 mb-1">Ancho Base (px):</Glabel>
-                            <input type="number" id="def-baseWidth" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: 700">
+                            <input type="number" id="def-baseWidth" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: 128">
                         </div>
                         <div>
                             <label for="def-baseHeight" class="modal-label block text-sm font-medium text-gray-700 mb-1">Alto Base (px):</label>
-                            <input type="number" id="def-baseHeight" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: 700">
+                            <input type="number" id="def-baseHeight" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: 128">
                         </div>
                     </div>
-                     <p class="text-xs text-gray-500">Ancho/Alto del sprite original. Si se deja en blanco, usará el tamaño de la imagen.</p>
+                     <p class="text-xs text-gray-500">Ancho/Alto del sprite o SVG. (Ej: 128x128). Requerido para SVG.</p>
                 </div>
                 
                 <!-- Inputs de Bloque/Terreno con botones -->
@@ -305,22 +326,22 @@
                     <div>
                         <label for="def-imgSrcTop" class="modal-label block text-sm font-medium text-gray-700 mb-1">Textura Superior (Top):</label>
                         <div class="flex items-center gap-2">
-                            <input type="text" id="def-imgSrcTop" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: block_top.png">
-                            <button type="button" class="select-image-btn" data-target-input="def-imgSrcTop" title="Seleccionar imagen del gestor">...</button>
+                            <input type="text" id="def-imgSrcTop" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: block_top.png, svg:mi_textura">
+                            <button type="button" class="select-image-btn" data-target-input="def-imgSrcTop" data-asset-type="image" title="Seleccionar asset del gestor">...</button>
                         </div>
                     </div>
                     <div>
                         <label for="def-imgSrcLeft" class="modal-label block text-sm font-medium text-gray-700 mb-1">Textura Izquierda (Left):</label>
                          <div class="flex items-center gap-2">
                             <input type="text" id="def-imgSrcLeft" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: block_side.png">
-                            <button type="button" class="select-image-btn" data-target-input="def-imgSrcLeft" title="Seleccionar imagen del gestor">...</button>
+                            <button type="button" class="select-image-btn" data-target-input="def-imgSrcLeft" data-asset-type="image" title="Seleccionar asset del gestor">...</button>
                         </div>
                     </div>
                     <div>
                         <label for="def-imgSrcRight" class="modal-label block text-sm font-medium text-gray-700 mb-1">Textura Derecha (Right):</label>
                         <div class="flex items-center gap-2">
                             <input type="text" id="def-imgSrcRight" class="modal-input w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900" placeholder="Ej: block_side.png">
-                            <button type="button" class="select-image-btn" data-target-input="def-imgSrcRight" title="Seleccionar imagen del gestor">...</button>
+                            <button type="button" class="select-image-btn" data-target-input="def-imgSrcRight" data-asset-type="image" title="Seleccionar asset del gestor">...</button>
                         </div>
                     </div>
                 </div>
@@ -404,34 +425,81 @@
         </div>
     </div>
     
-    <!-- Modal del Gestor de Imágenes (sin cambios) -->
+    <!-- ¡MODAL DEL GESTOR DE IMÁGENES MODIFICADO! -->
     <div id="image-manager-modal" class="modal fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4" style="display: none; z-index: 200;">
         <div class="modal-content bg-gray-800 p-6 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
             <div class="flex justify-between items-center mb-4">
-                 <h3 class="modal-title text-2xl font-bold text-white">Gestor de Imágenes (recursos/)</h3>
+                 <h3 class="modal-title text-2xl font-bold text-white">Gestor de Assets</h3>
                  <button id="close-image-manager-btn" class="text-gray-400 hover:text-white text-3xl">&times;</button>
             </div>
            
             <div class="modal-body mb-6 flex-1 flex flex-col min-h-0">
                 
-                <!-- Sección de Subida -->
-                <div class="bg-gray-700 p-4 rounded-lg mb-4 flex items-center gap-4">
-                    <label for="image-upload-input" class="modal-label block text-sm font-medium text-gray-300">Subir nueva imagen:</label>
-                    <input type="file" id="image-upload-input" accept="image/png, image/jpeg, image/gif" class="flex-1 text-sm text-gray-300
-                        file:mr-4 file:py-2 file:px-4
-                        file:rounded-lg file:border-0
-                        file:text-sm file:font-semibold
-                        file:bg-blue-600 file:text-white
-                        hover:file:bg-blue-700">
-                    <button id="image-upload-button" class="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">Subir</button>
+                <!-- ¡MODIFICADO! 3 Pestañas -->
+                <div class="flex border-b border-gray-600 mb-4">
+                    <button id="img-mgr-tab-storage" class="tab-button active px-4 py-2 rounded-t-lg font-medium">Imágenes (Storage)</button>
+                    <button id="img-mgr-tab-svg" class="tab-button inactive px-4 py-2 rounded-t-lg font-medium">Vectores (SVG)</button>
+                    <!-- ¡NUEVO! -->
+                    <button id="img-mgr-tab-model" class="tab-button inactive px-4 py-2 rounded-t-lg font-medium">Modelos (GLB)</button>
+                </div>
+
+                <!-- Contenido de Pestaña 1: Storage (Contenido existente) -->
+                <div id="img-mgr-content-storage">
+                    <!-- Sección de Subida -->
+                    <div class="bg-gray-700 p-4 rounded-lg mb-4 flex items-center gap-4">
+                        <label for="image-upload-input" class="modal-label block text-sm font-medium text-gray-300">Subir nueva imagen:</label>
+                        <input type="file" id="image-upload-input" accept="image/png, image/jpeg, image/gif" class="flex-1 text-sm text-gray-300
+                            file:mr-4 file:py-2 file:px-4
+                            file:rounded-lg file:border-0
+                            file:text-sm file:font-semibold
+                            file:bg-blue-600 file:text-white
+                            hover:file:bg-blue-700">
+                        <button id="image-upload-button" class="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">Subir</button>
+                    </div>
+                    
+                    <!-- Galería de Imágenes (Storage) -->
+                    <div id="image-gallery" class="flex-1 bg-gray-900 p-4 rounded-lg overflow-y-auto grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-4" style="max-height: 50vh;">
+                        <!-- Las imágenes se cargarán aquí -->
+                        <p class="text-gray-500 col-span-full text-center">Cargando imágenes...</p>
+                    </div>
+                </div>
+
+                <!-- Contenido de Pestaña 2: SVG (Contenido existente) -->
+                <div id="img-mgr-content-svg" style="display: none;">
+                    <!-- Sección de Subida de SVG -->
+                    <div class="bg-gray-700 p-4 rounded-lg mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="md:col-span-1 flex flex-col gap-2">
+                            <label for="svg-id-input" class="modal-label block text-sm font-medium text-gray-300">ID del SVG (único):</label>
+                            <input type="text" id="svg-id-input" placeholder="ej: tank_svg" class="modal-input w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-white">
+                            <button id="svg-save-button" class="w-full px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">Guardar SVG</button>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label for="svg-data-textarea" class="modal-label block text-sm font-medium text-gray-300 mb-1">Pegar código &lt;svg...&gt; aquí:</label>
+                            <textarea id="svg-data-textarea" rows="5" class="modal-input w-full px-3 py-2 border border-gray-600 rounded-lg bg-gray-800 text-white font-mono text-xs" placeholder="<svg viewBox=..."></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Galería de Imágenes (SVG) -->
+                    <div id="svg-gallery" class="flex-1 bg-gray-900 p-4 rounded-lg overflow-y-auto grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-4" style="max-height: 45vh;">
+                        <p class="text-gray-500 col-span-full text-center">Cargando SVGs...</p>
+                    </div>
                 </div>
                 
-                <!-- Galería de Imágenes -->
-                <div id="image-gallery" class="flex-1 bg-gray-900 p-4 rounded-lg overflow-y-auto grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-4">
-                    <!-- Las imágenes se cargarán aquí -->
-                    <p class="text-gray-500 col-span-full text-center">Cargando imágenes...</p>
+                <!-- ¡NUEVO! Contenido de Pestaña 3: Modelos (GLB) -->
+                <div id="img-mgr-content-model" style="display: none;">
+                    <!-- Sección de Subida de GLB -->
+                    <div class="bg-gray-700 p-4 rounded-lg mb-4 flex items-center gap-4">
+                       <label for="model-upload-input" class="modal-label block text-sm font-medium text-gray-300">Subir nuevo modelo (.glb, .gltf):</label>
+<input type="file" id="model-upload-input" accept=".glb,.gltf" class="flex-1 ...">
+                        <button id="model-upload-button" class="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">Subir</button>
+                    </div>
+                    
+                    <!-- Galería de Modelos (GLB) -->
+                    <div id="model-gallery" class="flex-1 bg-gray-900 p-4 rounded-lg overflow-y-auto grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-4" style="max-height: 50vh;">
+                        <p class="text-gray-500 col-span-full text-center">Cargando modelos...</p>
+                    </div>
                 </div>
-                
+
                 <p id="image-manager-error" class="text-red-500 text-sm hidden mt-2">Error.</p>
             </div>
         </div>

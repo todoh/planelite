@@ -82,6 +82,12 @@ let zoomInButton, zoomOutButton;
 // --- ¡NUEVO! Elementos del DOM (Gestor de Imágenes) ---
 let imageManagerModal, closeImageManagerBtn, imageUploadInput, imageUploadButton, imageGallery, imageManagerError;
 let currentTargetInputId = null; // Guarda el ID del input (ej: "def-imgSrc") que abrió el gestor
+// ¡NUEVO!
+let imgMgrTabStorage, imgMgrTabSvg, imgMgrTabModel;
+let imgMgrContentStorage, imgMgrContentSvg, imgMgrContentModel;
+let svgIdInput, svgDataTextarea, svgSaveButton, svgGallery;
+// --- ¡NUEVO (GLTF)! ---
+let modelUploadInput, modelUploadButton, modelGallery;
 
 
 // --- Funciones de UI (Notificación y Carga - Sin cambios) ---
@@ -104,7 +110,7 @@ function hideLoading() {
     if (loadingIndicator) loadingIndicator.style.display = 'none';
 }
 
-// --- Funciones del Editor (Canvas y Herramientas - Sin cambios) ---
+// --- Funciones del Editor (Canvas y Herramientas) ---
 
 function initLocalGrid(width, height) {
     localMapData.width = width;
@@ -165,12 +171,12 @@ function drawGrid() {
             
             // 1. Obtener el nombre del archivo
             const groundFileName = groundDef.imgSrcTop;
-            // 2. Convertir a URL
-            const groundStorageUrl = groundFileName ? getFirebaseStorageUrl(groundFileName) : null;
-            // 3. Buscar en caché con la URL
-            const groundImg = groundStorageUrl ? imageCache[groundStorageUrl] : null;
+            // 2. ¡MODIFICADO! Convertir a URL o usar clave SVG
+            const groundStorageKey = groundFileName ? (groundFileName.startsWith('svg:') ? groundFileName : getFirebaseStorageUrl(groundFileName)) : null;
+            // 3. Buscar en caché con la URL/Clave
+            const groundImg = groundStorageKey ? imageCache[groundStorageKey] : null;
             
-            if (groundImg && groundImg.complete) {
+            if (groundImg && groundImg.complete && groundImg.width > 0) {
                 ctx.drawImage(groundImg, x * CELL_WIDTH, z * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT);
             } else {
                 ctx.fillStyle = groundDef.color || '#FF00FF';
@@ -207,23 +213,28 @@ function drawGrid() {
             
             if (def && def.id !== 'none') {
                 
-                // 1. Obtener el nombre del archivo
-                const entityFileName = def.imgSrc;
-                // 2. Convertir a URL
-                const entityStorageUrl = entityFileName ? getFirebaseStorageUrl(entityFileName) : null;
-                // 3. Buscar en caché con la URL
-                const entityImg = entityStorageUrl ? imageCache[entityStorageUrl] : null;
-
-                if (entityImg && entityImg.complete) {
-                    // Dibujar la imagen de la entidad
-                    ctx.drawImage(entityImg, x * CELL_WIDTH, z * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT);
-                } else {
-                    // Fallback al símbolo de texto (si no hay imagen o no ha cargado)
-                    const symbol = def.symbol || '?';
+                // --- ¡NUEVO (GLTF)! ---
+                // Si es un modelo GLB, mostrar un símbolo placeholder '📦'
+                if (def.renderStyle === 'gltf' && def.modelSrc) {
                     ctx.fillStyle = 'black';
-                    ctx.fillText(symbol, (x + 0.5) * CELL_WIDTH + 1, (z + 0.65) * CELL_HEIGHT + 1);
+                    ctx.fillText('📦', (x + 0.5) * CELL_WIDTH + 1, (z + 0.65) * CELL_HEIGHT + 1);
                     ctx.fillStyle = 'white';
-                    ctx.fillText(symbol, (x + 0.5) * CELL_WIDTH, (z + 0.65) * CELL_HEIGHT);
+                    ctx.fillText('📦', (x + 0.5) * CELL_WIDTH, (z + 0.65) * CELL_HEIGHT);
+                } else {
+                    // Lógica existente para Sprites (SVG o PNG)
+                    const entityFileName = def.imgSrc;
+                    const entityStorageKey = entityFileName ? (entityFileName.startsWith('svg:') ? entityFileName : getFirebaseStorageUrl(entityFileName)) : null;
+                    const entityImg = entityStorageKey ? imageCache[entityStorageKey] : null;
+    
+                    if (entityImg && entityImg.complete && entityImg.width > 0) {
+                        ctx.drawImage(entityImg, x * CELL_WIDTH, z * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT);
+                    } else {
+                        const symbol = def.symbol || '?';
+                        ctx.fillStyle = 'black';
+                        ctx.fillText(symbol, (x + 0.5) * CELL_WIDTH + 1, (z + 0.65) * CELL_HEIGHT + 1);
+                        ctx.fillStyle = 'white';
+                        ctx.fillText(symbol, (x + 0.5) * CELL_WIDTH, (z + 0.65) * CELL_HEIGHT);
+                    }
                 }
             }
         }
@@ -752,21 +763,57 @@ async function deleteMap(mapId) {
 }
 
 
-// --- ¡¡¡NUEVAS FUNCIONES!!! Gestor de Imágenes ---
+// --- ¡NUEVO! Helper para cambiar de pestaña (MOVIDO AQUÍ) ---
+function switchMgrTab(activeTab, activeContent) {
+    const allTabs = [imgMgrTabStorage, imgMgrTabSvg, imgMgrTabModel];
+    const allContents = [imgMgrContentStorage, imgMgrContentSvg, imgMgrContentModel];
+    
+    allTabs.forEach((tab, index) => {
+        const content = allContents[index];
+        if (!tab || !content) return;
+        
+        if (tab === activeTab) {
+            tab.classList.add('active');
+            tab.classList.remove('inactive');
+            content.style.display = 'block';
+        } else {
+            tab.classList.add('inactive');
+            tab.classList.remove('active');
+            content.style.display = 'none';
+        }
+    });
+}
+
 
 /**
- * Abre el modal del gestor de imágenes y carga la galería.
+ * ¡MODIFICADO!
+ * Abre el modal del gestor de imágenes y carga AMBAS galerías.
  * @param {string} targetInputId - El ID del input que recibirá el nombre del archivo.
+ * @param {string} assetType - 'model' o null/undefined (para imagen/svg)
  */
-function openImageManager(targetInputId) {
+function openImageManager(targetInputId, assetType = null) {
     currentTargetInputId = targetInputId;
     if (imageManagerModal) {
         imageManagerModal.style.display = 'flex';
-        loadImageGallery();
+        
+        // ¡NUEVA LÓGICA DE PESTAÑAS!
+        if (assetType === 'model') {
+            switchMgrTab(imgMgrTabModel, imgMgrContentModel);
+            loadModelGallery();
+        } else {
+            // Comportamiento por defecto (abrir en imágenes)
+            switchMgrTab(imgMgrTabStorage, imgMgrContentStorage);
+            loadImageGallery();
+        }
+        // Cargar las otras galerías en segundo plano
+        Entidades.populateSvgGallery(svgGallery, handleAssetSelect);
+        if (assetType !== 'model') loadModelGallery();
+        if (assetType === 'model') loadImageGallery();
     }
 }
 
 /**
+ * ¡MODIFICADO!
  * Cierra el modal del gestor de imágenes.
  */
 function closeImageManager() {
@@ -777,6 +824,13 @@ function closeImageManager() {
     if (imageUploadInput) {
         imageUploadInput.value = null; // Limpiar el input de archivo
     }
+    // ¡NUEVO!
+    if (svgIdInput) svgIdInput.value = null;
+    if (svgDataTextarea) svgDataTextarea.value = null;
+    // --- ¡NUEVO (GLTF)! ---
+    if (modelUploadInput) modelUploadInput.value = null;
+    // ---
+
     if(imageManagerError) {
         imageManagerError.classList.add('hidden');
     }
@@ -863,7 +917,8 @@ async function handleImageUpload() {
         loadImageGallery(); // Refrescar galería
         
         // ¡Importante! Forzar la precarga de la nueva imagen en la caché del editor
-        Entidades.preloadImage(fileName);
+        // ¡MODIFICADO!
+        Entidades.preloadAsset(fileName);
 
     } catch (error) {
         console.error("Error subiendo imagen:", error);
@@ -876,14 +931,36 @@ async function handleImageUpload() {
 }
 
 /**
- * Maneja la selección de una imagen de la galería.
- * @param {string} fileName - El nombre del archivo seleccionado.
+ * ¡NUEVO!
+ * Maneja el guardado de un nuevo SVG desde el editor.
  */
-function handleImageSelect(fileName) {
+async function handleSaveSvg() {
+    const id = svgIdInput.value;
+    const data = svgDataTextarea.value;
+    
+    // La lógica de guardado está en e-entidades.js
+    await Entidades.saveSvgDefinition(id, data);
+    
+    // Limpiar inputs y refrescar galería SVG
+    svgIdInput.value = '';
+    svgDataTextarea.value = '';
+    // onDefinitionsUpdated() (llamado desde saveSvgDefinition)
+    // se encargará de refrescar todo, incluida la galería SVG.
+    // Pero por si acaso, la refrescamos aquí también.
+    Entidades.populateSvgGallery(svgGallery, handleAssetSelect);
+}
+
+
+/**
+ * ¡MODIFICADO!
+ * Renombrada de handleImageSelect a handleAssetSelect.
+ * @param {string} assetString - El nombre del asset (ej: 'tree.png' o 'svg:tank_svg' o 'tank.glb')
+ */
+function handleAssetSelect(assetString) {
     if (currentTargetInputId) {
         const targetInput = document.getElementById(currentTargetInputId);
         if (targetInput) {
-            targetInput.value = fileName;
+            targetInput.value = assetString;
         }
     }
     closeImageManager();
@@ -906,6 +983,7 @@ async function handleImageDelete(fileName) {
         showNotification(`¡Imagen '${fileName}' borrada!`);
         
         // Limpiar de la caché de imágenes si existe
+        // ¡MODIFICADO!
         const storageUrl = getFirebaseStorageUrl(fileName);
         if (storageUrl && imageCache[storageUrl]) {
             delete imageCache[storageUrl];
@@ -917,6 +995,134 @@ async function handleImageDelete(fileName) {
     } catch (error) {
         console.error("Error borrando imagen:", error);
         showNotification("Error al borrar la imagen.", true);
+        imageManagerError.textContent = `Error: ${error.message}`;
+        imageManagerError.classList.remove('hidden');
+    } finally {
+        hideLoading();
+    }
+}
+
+// --- ¡NUEVAS FUNCIONES! Gestor de Modelos ---
+    
+/**
+ * Carga y muestra todos los modelos de la carpeta 'modelos/' en el modal.
+ */
+async function loadModelGallery() {
+    if (!modelGallery) return;
+    modelGallery.innerHTML = '<p class="text-gray-500 col-span-full text-center">Cargando modelos...</p>';
+    
+    try {
+        const listRef = storageRef(storage, 'modelos'); // ¡Nueva carpeta!
+        const res = await listAll(listRef);
+        
+        modelGallery.innerHTML = ''; // Limpiar
+        
+        if (res.items.length === 0) {
+             modelGallery.innerHTML = '<p class="text-gray-500 col-span-full text-center">No hay modelos en la carpeta /modelos.</p>';
+             return;
+        }
+
+        res.items.forEach(itemRef => {
+            const fileName = itemRef.name;
+
+            const item = document.createElement('div');
+            item.className = 'gallery-item';
+            
+            // No podemos previsualizar un GLB, así que usamos un placeholder
+            const placeholder = document.createElement('div');
+            placeholder.className = 'gallery-img gallery-img-placeholder'; // Re-usa estilos
+            placeholder.textContent = '📦'; // Símbolo de "caja"
+            placeholder.style.fontFamily = 'sans-serif';
+            placeholder.style.fontSize = '3rem';
+            placeholder.style.display = 'flex';
+            placeholder.style.alignItems = 'center';
+            placeholder.style.justifyContent = 'center';
+            placeholder.style.cursor = 'pointer';
+            placeholder.style.backgroundColor = '#374151'; // bg-gray-700
+            placeholder.dataset.filename = fileName;
+            placeholder.title = `Seleccionar: ${fileName}`;
+            
+            const name = document.createElement('span');
+            name.className = 'gallery-name';
+            name.textContent = fileName;
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'gallery-delete-btn';
+            deleteBtn.textContent = '×';
+            deleteBtn.title = `Borrar: ${fileName}`;
+            deleteBtn.dataset.filename = fileName;
+
+            item.appendChild(placeholder);
+            item.appendChild(name);
+            item.appendChild(deleteBtn);
+            modelGallery.appendChild(item);
+        });
+
+    } catch (error) {
+        console.error("Error cargando galería de modelos:", error);
+        modelGallery.innerHTML = '<p class="text-red-500 col-span-full text-center">Error al cargar modelos.</p>';
+    }
+}
+
+/**
+ * Maneja la subida de un nuevo archivo de modelo a 'modelos/'.
+ */
+async function handleModelUpload() {
+    if (!modelUploadInput || !modelUploadInput.files || modelUploadInput.files.length === 0) {
+        showNotification("Selecciona un archivo .glb o .gltf primero.", true);
+        return;
+    }
+    
+    const file = modelUploadInput.files[0];
+    // --- ¡MODIFICADO! ---
+    if (!file.name.endsWith('.glb') && !file.name.endsWith('.gltf')) {
+         showNotification("Solo se permiten archivos .glb o .gltf.", true);
+         return;
+    }
+    // ---
+    
+    const fileName = file.name.replace(/[\.\#\$\[\]\/]/g, '_');
+    const fileRef = storageRef(storage, `modelos/${fileName}`); // ¡Nueva carpeta!
+    
+    showLoading();
+    imageManagerError.classList.add('hidden'); // Reusamos el notificador de error
+
+    try {
+        await uploadBytes(fileRef, file);
+        showNotification(`¡Modelo '${fileName}' subido con éxito!`);
+        modelUploadInput.value = null; // Limpiar input
+        loadModelGallery(); // Refrescar galería
+
+    } catch (error) {
+        console.error("Error subiendo modelo:", error);
+        showNotification("Error al subir el modelo.", true);
+        imageManagerError.textContent = `Error: ${error.message}`;
+        imageManagerError.classList.remove('hidden');
+    } finally {
+        hideLoading();
+    }
+}
+
+/**
+ * Maneja el borrado de un modelo de 'modelos/'.
+ * @param {string} fileName - El nombre del archivo a borrar.
+ */
+async function handleModelDelete(fileName) {
+    showNotification(`Borrando '${fileName}'...`, false);
+    
+    const fileRef = storageRef(storage, `modelos/${fileName}`); // ¡Nueva carpeta!
+    
+    showLoading();
+    imageManagerError.classList.add('hidden');
+    
+    try {
+        await deleteObject(fileRef);
+        showNotification(`¡Modelo '${fileName}' borrado!`);
+        loadModelGallery(); // Refrescar galería
+
+    } catch (error) {
+        console.error("Error borrando modelo:", error);
+        showNotification("Error al borrar el modelo.", true);
         imageManagerError.textContent = `Error: ${error.message}`;
         imageManagerError.classList.remove('hidden');
     } finally {
@@ -987,6 +1193,7 @@ function initFirebase() {
                 Entidades.initEntityModule(db, showNotification, showLoading, hideLoading, refreshDefinitionsAndUI);
                 
                 // Inyectar la función de refresco COMPLETA.
+                // ¡MODIFICADO!
                 Entidades.setRedrawCallback(refreshDefinitionsAndUI);
                 
                 Entidades.initInstanceModalDependencies(() => mapIdList, () => currentMapId);
@@ -1013,7 +1220,7 @@ function initFirebase() {
 
 /**
  * ¡MODIFICADO!
- * Añade los listeners para el nuevo gestor de imágenes.
+ * Añade los listeners para el nuevo gestor de imágenes y sus pestañas.
  */
 function setupEventListeners() {
     // Eventos del canvas
@@ -1118,13 +1325,34 @@ function setupEventListeners() {
     imageGallery = document.getElementById('image-gallery');
     imageManagerError = document.getElementById('image-manager-error');
 
+    // ¡NUEVO! Elementos SVG y Pestañas
+    imgMgrTabStorage = document.getElementById('img-mgr-tab-storage');
+    imgMgrTabSvg = document.getElementById('img-mgr-tab-svg');
+    imgMgrContentStorage = document.getElementById('img-mgr-content-storage');
+    imgMgrContentSvg = document.getElementById('img-mgr-content-svg');
+    svgIdInput = document.getElementById('svg-id-input');
+    svgDataTextarea = document.getElementById('svg-data-textarea');
+    svgSaveButton = document.getElementById('svg-save-button');
+    svgGallery = document.getElementById('svg-gallery');
+    
+    // --- ¡NUEVO (GLTF)! ---
+    imgMgrTabModel = document.getElementById('img-mgr-tab-model');
+    imgMgrContentModel = document.getElementById('img-mgr-content-model');
+    modelUploadInput = document.getElementById('model-upload-input');
+    modelUploadButton = document.getElementById('model-upload-button');
+    modelGallery = document.getElementById('model-gallery');
+    // ---
+
     // Botones "Seleccionar" en el modal de Definición
     const selectImageBtns = document.querySelectorAll('.select-image-btn');
     selectImageBtns.forEach(btn => {
         btn.addEventListener('click', () => {
             const targetId = btn.dataset.targetInput;
+            // --- ¡NUEVO (GLTF)! ---
+            const assetType = btn.dataset.assetType; // 'model' o undefined
+            // ---
             if (targetId) {
-                openImageManager(targetId);
+                openImageManager(targetId, assetType); // ¡MODIFICADO!
             }
         });
     });
@@ -1133,11 +1361,45 @@ function setupEventListeners() {
     if (closeImageManagerBtn) {
         closeImageManagerBtn.addEventListener('click', closeImageManager);
     }
+    // (Storage)
     if (imageUploadButton) {
         imageUploadButton.addEventListener('click', handleImageUpload);
     }
+    // (SVG)
+    if (svgSaveButton) {
+        svgSaveButton.addEventListener('click', handleSaveSvg);
+    }
+    // --- ¡NUEVO (GLTF)! ---
+    if (modelUploadButton) {
+        modelUploadButton.addEventListener('click', handleModelUpload);
+    }
+    // ---
 
-    // Delegación de eventos en la galería (para seleccionar y borrar)
+    // ¡NUEVO! Listeners de Pestañas del Gestor (Refactorizado)
+   
+    
+    if (imgMgrTabStorage) {
+        imgMgrTabStorage.addEventListener('click', () => switchMgrTab(imgMgrTabStorage, imgMgrContentStorage));
+    }
+    if (imgMgrTabSvg) {
+         imgMgrTabSvg.addEventListener('click', () => {
+            switchMgrTab(imgMgrTabSvg, imgMgrContentSvg);
+            // Refrescar galería SVG al abrir la pestaña
+            Entidades.populateSvgGallery(svgGallery, handleAssetSelect);
+        });
+    }
+    // --- ¡NUEVO (GLTF)! ---
+    if (imgMgrTabModel) {
+        imgMgrTabModel.addEventListener('click', () => {
+            switchMgrTab(imgMgrTabModel, imgMgrContentModel);
+            // Refrescar galería de modelos
+            loadModelGallery();
+        });
+    }
+    // ---
+
+
+    // Delegación de eventos en la galería (Storage)
     if (imageGallery) {
         imageGallery.addEventListener('click', (e) => {
             const target = e.target;
@@ -1153,11 +1415,35 @@ function setupEventListeners() {
             else if (target.classList.contains('gallery-img')) {
                 const filename = target.dataset.filename;
                 if (filename) {
-                    handleImageSelect(filename);
+                    handleAssetSelect(filename);
                 }
             }
         });
     }
+    
+    // --- ¡NUEVO (GLTF)! ---
+    // Delegación de eventos en la galería (Modelos)
+    if (modelGallery) {
+        modelGallery.addEventListener('click', (e) => {
+            const target = e.target;
+            
+            // Clic en el botón de borrar (X)
+            if (target.classList.contains('gallery-delete-btn')) {
+                const filename = target.dataset.filename;
+                if (filename) {
+                    handleModelDelete(filename);
+                }
+            } 
+            // Clic en el placeholder (para seleccionar)
+            else if (target.classList.contains('gallery-img-placeholder')) {
+                const filename = target.dataset.filename;
+                if (filename) {
+                    handleAssetSelect(filename);
+                }
+            }
+        });
+    }
+    // ---
 }
 
 window.onload = () => {

@@ -10,6 +10,8 @@ export let localGroundTypes = {};
 export let localEntityTypes = {}; 
 export let localPortalTypes = {};
 export let localBlockTypes = {}; 
+// --- ¡NUEVO! ---
+export let localSvgDefs = {}; // Caché para los datos SVG
 
 // --- Símbolo de Inicio (Constante) ---
 export const START_POS_SYMBOL = '🏁';
@@ -37,6 +39,9 @@ let defGroundFields, defColorInput, defCommonFields, defSymbolInput;
 let defBaseWidthInput, defBaseHeightInput;
 // --- ¡NUEVO! ---
 let defRenderStyleInput; 
+// ---
+// --- ¡NUEVOS (GLTF)! ---
+let defGltfFields, defModelSrcInput;
 // ---
 let defBlockFields, defImgSrcTopInput, defImgSrcLeftInput, defImgSrcRightInput, defHeightInput;
 let definitionError, closeDefinitionBtn, saveDefinitionBtn;
@@ -108,6 +113,9 @@ export function initEntityModule(dbDep, notifyFn, loadingShowFn, loadingHideFn, 
     defBaseHeightInput = document.getElementById('def-baseHeight');
     // --- ¡NUEVO! ---
     defRenderStyleInput = document.getElementById('def-render-style');
+    // --- ¡NUEVOS (GLTF)! ---
+    defGltfFields = document.getElementById('def-gltf-fields');
+    defModelSrcInput = document.getElementById('def-modelSrc');
     // ---
     definitionError = document.getElementById('definition-error');
     closeDefinitionBtn = document.getElementById('close-definition-button');
@@ -155,7 +163,7 @@ export function initEntityModule(dbDep, notifyFn, loadingShowFn, loadingHideFn, 
     editRouteBtn = document.getElementById('edit-route-btn');
     stopRouteEditBtn = document.getElementById('stop-route-edit-btn');
     
-    // ... (Asignación de Listeners - Sin cambios) ...
+    // ... (Asignación de Listeners) ...
     const tabs = [tabBtnGround, tabBtnBlock, tabBtnPortal, tabBtnEntity]; 
     const tabContents = [tabContentGround, tabContentBlock, tabContentPortal, tabContentEntity]; 
     function switchTab(tabToActivate) {
@@ -185,6 +193,13 @@ export function initEntityModule(dbDep, notifyFn, loadingShowFn, loadingHideFn, 
     if (closeInteractionBtn) closeInteractionBtn.addEventListener('click', closeInteractionModal);
     if (saveInteractionBtn) saveInteractionBtn.addEventListener('click', saveInteraction);
     if (interactionActionTypeInput) interactionActionTypeInput.addEventListener('change', toggleInteractionModalFields);
+    
+    // --- ¡NUEVO! Listener para Render Style ---
+    if (defRenderStyleInput) {
+        defRenderStyleInput.addEventListener('change', toggleDefinitionModalFields);
+    }
+    // ---
+    
     if (savePortalBtn) savePortalBtn.addEventListener('click', savePortalDest);
     if (closePortalBtn) closePortalBtn.addEventListener('click', closePortalModal);
     if (saveNpcBtn) saveNpcBtn.addEventListener('click', saveNpcInstance);
@@ -206,37 +221,98 @@ export function initInstanceModalDependencies(getMapIdListFn, getCurrentMapIdFn)
 
 // --- GESTIÓN DE PRECARGA DE IMÁGENES ---
 
-export function preloadImage(src) {
+/**
+ * ¡MODIFICADO!
+ * Ahora precarga tanto imágenes de Storage como SVGs de la DB.
+ * Usa la URL de storage O el prefijo 'svg:' como clave de caché.
+ * @param {string} src - El nombre del asset (ej: 'tree.png' o 'svg:tank_svg')
+ */
+export function preloadAsset(src) {
     if (!src) {
         return; 
     }
-    const storageUrl = getFirebaseStorageUrl(src);
-    if (!storageUrl) {
+    
+    // La clave de caché es la URL (para PNG) o el ID (para SVG)
+    const cacheKey = src.startsWith('svg:') ? src : getFirebaseStorageUrl(src);
+
+    if (!cacheKey) {
+        return; // No se pudo generar una clave (ej. getFirebaseStorageUrl falló)
+    }
+
+    // Si ya está en caché (o cargando), no hacer nada
+    if (imageCache[cacheKey]) {
         return;
     }
-    if (imageCache[storageUrl]) {
-        return;
-    }
+
     const img = new Image();
+    
     img.onload = () => {
-        console.log(`(Editor) Imagen cargada: ${storageUrl}`);
+        console.log(`(Editor) Asset cargado: ${cacheKey}`);
         if (_redrawCallback) {
             _redrawCallback(); 
         }
     };
-    img.onerror = () => {
-        console.warn(`(Editor) Error al cargar la imagen: ${storageUrl}`);
-        imageCache[storageUrl] = null; 
+    img.onerror = (e) => {
+        console.warn(`(Editor) Error al cargar el asset: ${cacheKey}`, e);
+        imageCache[cacheKey] = null; // Marcar como fallido
     };
-    img.crossOrigin = "anonymous";
-    img.src = storageUrl;
-    imageCache[storageUrl] = img; 
+
+    // Poner la imagen (aún vacía) en caché para evitar cargas múltiples
+    imageCache[cacheKey] = img; 
+
+    if (src.startsWith('svg:')) {
+        // --- Lógica SVG ---
+        const svgId = src.substring(4);
+        if (localSvgDefs[svgId] && localSvgDefs[svgId].data) {
+            const svgData = localSvgDefs[svgId].data;
+            // Convertir texto SVG a Data URL
+            try {
+                // Usar btoa para codificar correctamente el SVG
+                const dataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+                img.src = dataUrl;
+            } catch (e) {
+                console.error(`Error al codificar SVG '${svgId}':`, e);
+                imageCache[cacheKey] = null;
+            }
+        } else {
+            // Aún no tenemos los datos del SVG (loadDefinitions no ha terminado)
+            // Esto puede pasar si se llama a preloadAsset antes de que loadSvgDefinitions termine.
+            // Se reintentará en la próxima llamada a loadDefinitions.
+            console.warn(`(Editor) Definición SVG para '${svgId}' aún no cargada. Se reintentará.`);
+            delete imageCache[cacheKey]; // Quitar de caché para reintentar
+        }
+    } else {
+        // --- Lógica PNG/JPG (Existente) ---
+        img.crossOrigin = "anonymous";
+        img.src = cacheKey; // cacheKey es la URL de Storage
+    }
 }
 
 
 // --- GESTIÓN DE DEFINICIONES (DATOS) ---
 
+// ¡NUEVO! Cargar definiciones SVG
+async function loadSvgDefinitions() {
+    const svgDefsRef = ref(db, 'moba-demo-svgs');
+    try {
+        const snapshot = await get(svgDefsRef);
+        if (snapshot.exists()) {
+            localSvgDefs = snapshot.val();
+            console.log("Definiciones SVG cargadas:", Object.keys(localSvgDefs));
+        } else {
+            localSvgDefs = {};
+            console.log("No se encontraron definiciones SVG.");
+        }
+    } catch (error) {
+        console.error("Error cargando definiciones SVG:", error);
+        localSvgDefs = {};
+    }
+}
+
 export async function loadDefinitions() {
+    // ¡NUEVO! Cargar SVGs primero
+    await loadSvgDefinitions();
+
     return new Promise((resolve, reject) => {
         const defsRef = ref(db, 'moba-demo-definitions');
         onValue(defsRef, (snapshot) => {
@@ -264,13 +340,16 @@ export async function loadDefinitions() {
             }
             const allDefs = [ ...Object.values(localGroundTypes), ...Object.values(localEntityTypes), ...Object.values(localPortalTypes), ...Object.values(localBlockTypes) ];
             
+            // ¡MODIFICADO! Usar preloadAsset
             allDefs.forEach(def => {
-                if (def.imgSrc) preloadImage(def.imgSrc);
-                if (def.imgSrcTop) preloadImage(def.imgSrcTop);
-                if (def.imgSrcLeft) preloadImage(def.imgSrcLeft);
-                if (def.imgSrcRight) preloadImage(def.imgSrcRight);
+                if (def.imgSrc) preloadAsset(def.imgSrc);
+                if (def.imgSrcTop) preloadAsset(def.imgSrcTop);
+                if (def.imgSrcLeft) preloadAsset(def.imgSrcLeft);
+                if (def.imgSrcRight) preloadAsset(def.imgSrcRight);
+                // No precargamos modelSrc (GLB) aquí, son archivos grandes
             });
-            console.log("Definiciones cargadas:", { localGroundTypes, localEntityTypes, localPortalTypes, localBlockTypes });
+
+            console.log("Definiciones de datos cargadas:", { localGroundTypes, localEntityTypes, localPortalTypes, localBlockTypes });
             resolve({ 
                 groundTypes: localGroundTypes, 
                 entityTypes: localEntityTypes,
@@ -283,6 +362,72 @@ export async function loadDefinitions() {
             reject(error);
         });
     });
+}
+
+// ¡NUEVO! Guardar una definición SVG
+export async function saveSvgDefinition(id, data) {
+    if (!id || !data) {
+        showNotification("Se requiere un ID y código SVG.", true);
+        return;
+    }
+    const cleanId = id.trim().replace(/[\.\#\$\[\]\/]/g, '_');
+    if (!cleanId) {
+        showNotification("ID inválido.", true);
+        return;
+    }
+    if (!data.trim().startsWith('<svg') || !data.trim().endsWith('</svg>')) {
+        showNotification("El código debe empezar con <svg> y terminar con </svg>.", true);
+        return;
+    }
+
+    showLoading();
+    try {
+        const svgRef = ref(db, `moba-demo-svgs/${cleanId}`);
+        await set(svgRef, { id: cleanId, data: data });
+        showNotification(`SVG '${cleanId}' guardado con éxito.`);
+        
+        // ¡Importante! Actualizar la caché local de SVG
+        localSvgDefs[cleanId] = { id: cleanId, data: data };
+        
+        // Refrescar definiciones y UI (para que la galería se actualice)
+        if (onDefinitionsUpdated) {
+            onDefinitionsUpdated();
+        }
+    } catch (error) {
+        console.error("Error guardando SVG:", error);
+        showNotification("Error al guardar el SVG.", true);
+    } finally {
+        hideLoading();
+    }
+}
+
+// ¡NUEVO! Borrar una definición SVG
+export async function handleSvgDelete(id) {
+    if (!id) return;
+    showNotification(`Borrando SVG '${id}'...`, false);
+    showLoading();
+    try {
+        const svgRef = ref(db, `moba-demo-svgs/${id}`);
+        await remove(svgRef);
+        showNotification(`SVG '${id}' borrado.`);
+        
+        // ¡Importante! Limpiar cachés locales
+        delete localSvgDefs[id];
+        const cacheKey = `svg:${id}`;
+        if (imageCache[cacheKey]) {
+            delete imageCache[cacheKey];
+        }
+        
+        // Refrescar definiciones y UI (para que la galería se actualice)
+        if (onDefinitionsUpdated) {
+            onDefinitionsUpdated();
+        }
+    } catch (error) {
+        console.error("Error borrando SVG:", error);
+        showNotification("Error al borrar el SVG.", true);
+    } finally {
+        hideLoading();
+    }
 }
 
 
@@ -311,27 +456,43 @@ async function saveDefinition() {
         symbol: defSymbolInput.value.trim() || null,
         baseWidth: parseInt(defBaseWidthInput.value, 10) || null,
         baseHeight: parseInt(defBaseHeightInput.value, 10) || null,
-        interactions: currentEditingInteractionsList || [] 
+        interactions: currentEditingInteractionsList || [],
+        // --- ¡NUEVO (GLTF)! ---
+        renderStyle: defRenderStyleInput.value || 'cross',
+        modelSrc: null, // Default
+        modelScale: 1.0 // Default
+        // ---
     };
     let dbPath = 'moba-demo-definitions/';
     
+    // --- ¡NUEVO (GLTF)! ---
+    // Guardar modelSrc solo si el estilo es 'gltf'
+    if (definitionData.renderStyle === 'gltf') {
+        definitionData.modelSrc = defModelSrcInput.value.trim() || null;
+        
+        // --- ¡¡¡CAMBIO AQUÍ!!! ---
+        const modelScaleInput = document.getElementById('def-modelScale');
+        definitionData.modelScale = parseFloat(modelScaleInput.value) || 1.0;
+        // ---
+    }
+    // ---
+
     if (type === 'ground') {
         definitionData.color = defColorInput.value;
-        definitionData.imgSrc = null; 
+        definitionData.imgSrc = null; // Ground no usa imgSrc principal
         definitionData.imgSrcTop = defImgSrcTopInput.value.trim() || null;
         definitionData.imgSrcLeft = defImgSrcLeftInput.value.trim() || null;
         definitionData.imgSrcRight = defImgSrcRightInput.value.trim() || null;
         definitionData.symbol = null;
-        definitionData.baseWidth = null;
-        definitionData.baseHeight = null;
+        definitionData.baseWidth = parseInt(defBaseWidthInput.value, 10) || null; // Permitir tamaño para texturas
+        definitionData.baseHeight = parseInt(defBaseHeightInput.value, 10) || null; // Permitir tamaño para texturas
         definitionData.interactions = []; 
+        definitionData.modelSrc = null; // Ground no puede ser GLTF
+        definitionData.renderStyle = null; // Ground no usa renderStyle
         dbPath += 'groundTypes';
         
     } else if (type === 'entity') {
-        definitionData.drawType = (definitionData.imgSrc) ? 'sprite' : 'none'; 
-        // --- ¡NUEVO! ---
-        definitionData.renderStyle = defRenderStyleInput.value || 'cross';
-        // ---
+        definitionData.drawType = (definitionData.imgSrc || definitionData.modelSrc) ? 'sprite' : 'none'; // 'sprite' se usa para cualquier cosa visible
         dbPath += 'entityTypes'; 
         
     } else if (type === 'portal') {
@@ -340,14 +501,16 @@ async function saveDefinition() {
         
     } else if (type === 'block') { 
         definitionData.passable = false; 
-        definitionData.imgSrc = null; 
-        definitionData.baseWidth = null;
-        definitionData.baseHeight = null;
+        definitionData.imgSrc = null; // Block no usa imgSrc principal
+        definitionData.baseWidth = parseInt(defBaseWidthInput.value, 10) || null; // Permitir tamaño para texturas
+        definitionData.baseHeight = parseInt(defBaseHeightInput.value, 10) || null; // Permitir tamaño para texturas
         definitionData.drawType = 'block';
         definitionData.height = parseFloat(defHeightInput.value) || 1.0; 
         definitionData.imgSrcTop = defImgSrcTopInput.value.trim() || null;
         definitionData.imgSrcLeft = defImgSrcLeftInput.value.trim() || null;
         definitionData.imgSrcRight = defImgSrcRightInput.value.trim() || null;
+        definitionData.modelSrc = null; // Block no puede ser GLTF (aún)
+        definitionData.renderStyle = null; // Block no usa renderStyle
         dbPath += 'blockTypes';
     }
     
@@ -453,6 +616,18 @@ export function updateDefinitionListUI(type, data, container) {
     });
 }
 
+// --- ¡NUEVO! Función de ayuda para mostrar/ocultar campos del modal de definición ---
+function toggleDefinitionModalFields() {
+    if (!defRenderStyleInput || !defGltfFields) return;
+    
+    const style = defRenderStyleInput.value;
+    if (style === 'gltf') {
+        defGltfFields.style.display = 'block';
+    } else {
+        defGltfFields.style.display = 'none';
+    }
+}
+
 
 function openDefinitionModal(type, def = null) {
     definitionForm.reset();
@@ -467,15 +642,16 @@ function openDefinitionModal(type, def = null) {
     defCommonFields.style.display = 'none';
     defBlockFields.style.display = 'none'; 
     defInteractionsContainer.style.display = 'none'; 
+    // --- ¡NUEVO (GLTF)! ---
+    defGltfFields.style.display = 'none';
+    // ---
 
     // 2. Obtener selectores de todos los campos comunes (los que están dentro de defCommonFields)
-    // ¡¡¡IMPORTANTE!!! Asumimos que CADA CAMPO está en su PROPIO DIV gracias al HTML corregido.
     const commonImgSrcEl = document.querySelector('label[for="def-imgSrc"]');
     const commonSymbolEl = document.querySelector('label[for="def-symbol"]');
     const commonPassableEl = document.querySelector('label[for="def-passable"]');
     const commonWidthHeightEl = defBaseWidthInput ? defBaseWidthInput.parentElement.parentElement : null;
     
-    // Ahora, commonPassable y renderStyleParent son DIVs DIFERENTES
     const commonImgSrc = commonImgSrcEl ? commonImgSrcEl.parentElement.parentElement : null; // Sigue teniendo el botón dentro
     const commonSymbol = commonSymbolEl ? commonSymbolEl.parentElement : null;
     const commonPassable = commonPassableEl ? commonPassableEl.parentElement : null;
@@ -505,6 +681,18 @@ function openDefinitionModal(type, def = null) {
         if (defRenderStyleInput) {
             defRenderStyleInput.value = def.renderStyle || 'cross';
         }
+        // --- ¡NUEVO (GLTF)! ---
+        if (defModelSrcInput) {
+            defModelSrcInput.value = def.modelSrc || '';
+        }
+        
+        // --- ¡¡¡CAMBIO AQUÍ!!! ---
+        const modelScaleInput = document.getElementById('def-modelScale');
+        if (modelScaleInput) {
+            modelScaleInput.value = (def.modelScale !== undefined) ? def.modelScale : 1.0;
+        }
+        // ---
+        
         currentEditingInteractionsList = def.interactions ? JSON.parse(JSON.stringify(def.interactions)) : [];
     } else {
         // Defaults si es nuevo
@@ -514,6 +702,17 @@ function openDefinitionModal(type, def = null) {
         if (defRenderStyleInput) {
             defRenderStyleInput.value = 'cross';
         }
+        // --- ¡NUEVO (GLTF)! ---
+        if (defModelSrcInput) {
+            defModelSrcInput.value = '';
+        }
+        
+        // --- ¡¡¡CAMBIO AQUÍ!!! ---
+        const modelScaleInput = document.getElementById('def-modelScale');
+        if (modelScaleInput) {
+            modelScaleInput.value = 1.0;
+        }
+        // ---
     }
     
     // 5. Mostrar campos por tipo (Lógica simplificada)
@@ -522,6 +721,7 @@ function openDefinitionModal(type, def = null) {
         if (defGroundFields) defGroundFields.style.display = 'block'; 
         if (defBlockFields) defBlockFields.style.display = 'block';
         if (commonPassable) commonPassable.style.display = 'block'; // Mostrar SÓLO passable
+        if (commonWidthHeight) commonWidthHeight.style.display = 'block'; // ¡NUEVO! Permitir tamaño para texturas
         
         if (def) {
             defColorInput.value = def.color || '#ffffff'; 
@@ -556,6 +756,7 @@ function openDefinitionModal(type, def = null) {
         
         if (commonPassable) commonPassable.style.display = 'block';
         if (commonSymbol) commonSymbol.style.display = 'block'; // Mostrar Símbolo
+        if (commonWidthHeight) commonWidthHeight.style.display = 'block'; // ¡NUEVO! Permitir tamaño para texturas
         
         defPassableInput.value = 'false'; 
         defPassableInput.disabled = true;
@@ -572,6 +773,11 @@ function openDefinitionModal(type, def = null) {
     }
 
     // --- FIN LÓGICA REFACTORIZADA ---
+    
+    // --- ¡NUEVO (GLTF)! ---
+    // Mostrar/ocultar el campo GLTF según el estilo de renderizado
+    toggleDefinitionModalFields();
+    // ---
 
     renderInteractionsList(); 
     definitionModal.style.display = 'flex';
@@ -696,10 +902,12 @@ function createToolButton(container, def, type, selectToolCallback) {
         fileName = def.imgSrcTop;
     }
 
-    const storageUrl = fileName ? getFirebaseStorageUrl(fileName) : null;
-    const imgFromCache = storageUrl ? imageCache[storageUrl] : null;
+    // ¡MODIFICADO! Obtener la clave de caché correcta
+    const cacheKey = fileName ? (fileName.startsWith('svg:') ? fileName : getFirebaseStorageUrl(fileName)) : null;
+    const imgFromCache = cacheKey ? imageCache[cacheKey] : null;
 
-    if (imgFromCache && imgFromCache.complete) {
+
+    if (imgFromCache && imgFromCache.complete && imgFromCache.width > 0) {
         const img = document.createElement('img');
         img.src = imgFromCache.src; 
         img.className = 'tool-button-img';
@@ -710,7 +918,14 @@ function createToolButton(container, def, type, selectToolCallback) {
         if (type === 'ground') {
             imgContainer.style.backgroundColor = def.color || '#FF00FF';
         } else {
-            imgContainer.textContent = def.symbol || '?';
+            // --- ¡NUEVO (GLTF)! ---
+            // Mostrar un símbolo diferente para GLB
+            if (def.renderStyle === 'gltf') {
+                imgContainer.textContent = '📦';
+                imgContainer.style.fontSize = '1.5rem';
+            } else {
+                imgContainer.textContent = def.symbol || '?';
+            }
         }
     }
     
@@ -760,6 +975,66 @@ export function populateTools(containers, selectToolCallback) {
         }
     }
 }
+
+// --- ¡NUEVO! Poblar la galería de SVG ---
+/**
+ * Rellena la galería de SVG en el modal del gestor de imágenes.
+ * @param {HTMLElement} galleryElement - El div #svg-gallery
+ * @param {Function} selectCallback - Función a llamar al seleccionar (ej. handleAssetSelect)
+ */
+export function populateSvgGallery(galleryElement, selectCallback) {
+    if (!galleryElement) return;
+    galleryElement.innerHTML = ''; // Limpiar
+
+    const sortedKeys = Object.keys(localSvgDefs).sort();
+
+    if (sortedKeys.length === 0) {
+        galleryElement.innerHTML = '<p class="text-gray-500 col-span-full text-center">No hay SVGs guardados en la base de datos.</p>';
+        return;
+    }
+
+    sortedKeys.forEach(key => {
+        const svgDef = localSvgDefs[key];
+        let dataUrl;
+        try {
+            dataUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgDef.data)));
+        } catch (e) {
+            console.error(`Error al codificar SVG '${key}' para la galería:`, e);
+            dataUrl = ''; // Fallback
+        }
+
+        const item = document.createElement('div');
+        item.className = 'gallery-item';
+        
+        const img = document.createElement('img');
+        img.src = dataUrl;
+        img.alt = svgDef.id;
+        img.className = 'gallery-img';
+        img.dataset.filename = `svg:${svgDef.id}`; // ¡Importante! Poner el prefijo
+        img.title = `Seleccionar: ${svgDef.id}`;
+        img.onclick = () => selectCallback(`svg:${svgDef.id}`); // Llamar al callback
+        
+        const name = document.createElement('span');
+        name.className = 'gallery-name';
+        name.textContent = svgDef.id;
+        
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'gallery-delete-btn';
+        deleteBtn.textContent = '×';
+        deleteBtn.title = `Borrar: ${svgDef.id}`;
+        deleteBtn.dataset.filename = svgDef.id; // Aquí SÓLO el id
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation(); // Evitar que se seleccione
+            handleSvgDelete(svgDef.id);
+        };
+
+        item.appendChild(img);
+        item.appendChild(name);
+        item.appendChild(deleteBtn);
+        galleryElement.appendChild(item);
+    });
+}
+
 
 // --- GESTIÓN DE UI (MODALES DE INSTANCIA) ---
 
